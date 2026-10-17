@@ -230,6 +230,10 @@ xseek match is built for personal use.
 
 It hasn't had an independent audit. See [docs/SECURITY.md](docs/SECURITY.md) for the details and known limits. Never paste API keys, cookies, database files or full logs into a public issue.
 
+## Development
+
+This project leverages AI-assisted development workflows. All architecture, logic, and code are planned, reviewed, and audited by human maintainers, backed by automated test suites.
+
 ## Credits
 
 - The release parser comes from detect-core, and the release keys from xseek.
