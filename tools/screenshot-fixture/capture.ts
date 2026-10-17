@@ -197,7 +197,7 @@ async function capture() {
 
     if (path === '/api/match/info') {
       return json({
-        version: '0.1.0',
+        version: '0.1.1',
         uptimeSeconds: 86400,
         startedAt: Date.now() - 86400000,
         indexerCacheHours: 24,
