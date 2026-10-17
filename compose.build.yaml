@@ -1,0 +1,6 @@
+# Builds the image from this checkout instead of pulling it. Use together with compose.yaml:
+# docker compose -f compose.yaml -f compose.build.yaml up -d --build
+services:
+  xseek-match:
+    build: .
+    image: xseek-match:local

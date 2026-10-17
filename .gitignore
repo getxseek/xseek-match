@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.local/
+.local*
+.env
+.env.*
+!.env.example
+*.log
+
+build/
+coverage/
+
+playwright-report/
+test-results/
+
+.reference/

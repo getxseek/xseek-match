@@ -1,0 +1,88 @@
+/* Search footer layout has one owner; keep responsive overrides beside the base rules. */
+.search-bar-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  justify-content: space-between;
+  column-gap: 12px;
+  row-gap: 0;
+  margin-top: 8px;
+  min-height: 0;
+  position: relative;
+  z-index: 1;
+}
+.search-bar-seasons {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  grid-column: 1;
+  grid-row: 1;
+}
+.search-bar-seasons > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.search-bar-seasons[data-visible='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+/* The status row only groups markup: its children (important indexers, actions) are grid
+   cells of .search-bar-footer, which places the indexers beneath the season chips. */
+.search-bar-status-row {
+  display: contents;
+}
+.search-bar-footer .search-season-chips {
+  padding: 0 4px 8px 25px;
+}
+.search-bar-footer .search-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+.search-bar-wrapper .search-title-suggestions {
+  top: calc(var(--search-form-height, 76px) + 8px);
+  z-index: 10;
+}
+.search-bar-footer .important-indexers {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  margin: 0;
+  padding: 0 0 0 25px;
+  min-height: 30px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.search-bar-footer:has(.search-bar-seasons[data-visible='true']) .important-indexers {
+  grid-row: 2;
+  padding-top: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .search-bar-seasons {
+    transition:
+      grid-template-rows 220ms ease,
+      opacity 180ms ease;
+  }
+}
+@media (max-width: 600px) {
+  .search-bar-footer {
+    column-gap: 6px;
+    flex-wrap: wrap;
+  }
+  .search-bar-footer .search-actions {
+    gap: 6px;
+  }
+  .search-bar-footer .search-season-chips {
+    padding-left: 16px;
+  }
+  .search-bar-footer .important-indexers {
+    padding-left: 16px;
+    gap: 8px;
+    grid-column: 1/-1;
+    grid-row: 2;
+  }
+}

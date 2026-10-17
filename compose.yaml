@@ -1,0 +1,27 @@
+# Runs the published image. Put your settings in a .env file next to this one (see .env.example).
+# Building from a checkout instead: docker compose -f compose.yaml -f compose.build.yaml up -d --build
+services:
+  xseek-match:
+    image: ghcr.io/getxseek/xseek-match:latest
+    restart: unless-stopped
+    ports:
+      # Reachable from other devices on your network. Use "127.0.0.1:${PORT:-5178}:5178"
+      # to keep it on this machine only.
+      - "${PORT:-5178}:5178"
+    environment:
+      PROWLARR_BASE_URL: ${PROWLARR_BASE_URL:-http://host.docker.internal:9696}
+      PROWLARR_API_KEY: ${PROWLARR_API_KEY:-}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5178}
+    volumes:
+      - match-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  match-data:

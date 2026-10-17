@@ -1,0 +1,53 @@
+{
+  "name": "xseek-match",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://github.com/getxseek/xseek-match",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getxseek/xseek-match.git"
+  },
+  "private": true,
+  "type": "module",
+  "description": "Cross-tracker release search and matching through Prowlarr",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build && node scripts/build-server.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run check:core && npm run test:browser",
+    "start": "node build/server/main.js",
+    "screenshot": "npx tsx tools/screenshot-fixture/capture.ts",
+    "reset-password": "node build/server/reset-password.js",
+    "check:core": "npm run format:check && npm run typecheck && npm test && npm run build",
+    "test:browser": "playwright test",
+    "format:check": "prettier --check \"src/server/**/*.ts\" \"src/contracts/**/*.ts\" \"src/domain/**/*.ts\" \"src/parser/**/*.ts\" \"src/web/**/*.{tsx,ts,css}\" \"test/**/*.{ts,tsx}\" src/search-history.ts src/search-input.ts src/qui-result.ts src/tracker-entry.ts src/integration-capabilities.ts src/version.ts playwright.config.ts vite.config.ts vitest.config.ts \"scripts/*.mjs\"",
+    "format": "prettier --write \"src/server/**/*.ts\" \"src/contracts/**/*.ts\" \"src/domain/**/*.ts\" \"src/parser/**/*.ts\" \"src/web/**/*.{tsx,ts,css}\" \"test/**/*.{ts,tsx}\" src/search-history.ts src/search-input.ts src/qui-result.ts src/tracker-entry.ts src/integration-capabilities.ts src/version.ts playwright.config.ts vite.config.ts vitest.config.ts \"scripts/*.mjs\""
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.40.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.64.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "prettier": "^3.9.10",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.8"
+  }
+}

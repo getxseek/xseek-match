@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 90" width="520" height="90" role="img" aria-label="xseek match">
+  <rect width="64" height="64" x="10" y="13" rx="15" fill="#0C0C0C"/>
+  <rect width="62" height="62" x="11" y="14" rx="14" stroke="#262626" stroke-width="1.5" fill="none"/>
+  <text x="31" y="56" font-family="Geist, Inter, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif" font-size="34" font-weight="800" fill="#FFFFFF" text-anchor="middle">x</text>
+  <text x="54" y="56" font-family="Geist, Inter, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif" font-size="34" font-weight="800" fill="#E5484D" text-anchor="middle">m</text>
+  <line x1="94" y1="25" x2="94" y2="65" stroke="#2A2A2A" stroke-width="1.5"/>
+  <text x="115" y="57" font-family="Geist, Inter, -apple-system, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif" font-size="44" font-weight="800" fill="#FFFFFF" letter-spacing="-1.2">xseek<tspan fill="#555555" font-weight="400"> · </tspan><tspan fill="#E5484D" font-weight="700">match</tspan></text>
+</svg>

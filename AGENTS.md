@@ -1,0 +1,1 @@
+Preserve unrelated changes. Never print .env secrets. Use xseek as the tracker User-Agent and respect rate limits and Retry-After. Update CHANGELOG.md with changes. Run npm run check before reporting completion.

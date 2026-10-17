@@ -1,0 +1,38 @@
+name: Check and container smoke test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run check
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: |
+            playwright-report/
+            test-results/
+      - run: docker build -t xseek-match:test .
+      - name: Container smoke test
+        shell: bash
+        run: |
+          docker run -d --name match-smoke -p 127.0.0.1:5189:5178 -e APP_ORIGIN=http://localhost:5189 xseek-match:test
+          trap 'docker rm -f match-smoke' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:5189/healthz; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:5189/ > /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5189/api/match/preferences)" = 401
+          curl --fail --silent http://127.0.0.1:5189/api/auth/status | grep '"setup":true'

@@ -1,0 +1,154 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root {
+  /* Theme roles. Defaults reproduce the xseek preset (src/web/match/theme/presets.ts) and are
+     overridden on the document root by the theme engine; keep both in sync. */
+  --background: #020202;
+  --foreground: #fffbfa;
+  --card: #080808;
+  --card-foreground: #fffbfa;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #fffbfa;
+  --muted: #161616;
+  --muted-foreground: #a3a3a3;
+  --accent: #1a1a1a;
+  --accent-foreground: #fffbfa;
+  --border: #292929;
+  --input: #303030;
+  --ink: #000000;
+  --paper: #ffffff;
+  --primary: #e5484d;
+  --primary-foreground: #fffbfa;
+  --primary-text: #ff9b9f;
+  --ring: #e5484d;
+  --danger: #e5484d;
+  --danger-text: #ff9b9f;
+  --positive: #6bf178;
+  --positive-text: #61d994;
+  --positive-muted: #91c7a5;
+  --warning: #e9b45a;
+  --warning-muted: #c6a370;
+  --info: #69b7d4;
+  --chart-1: #f5a8ac;
+  --chart-2: #ef7178;
+  --chart-3: #e5484d;
+  --primary-strong: #f2555a;
+  --primary-bright: #ef565d;
+  --primary-line: #e5686d;
+  --primary-glow: #ff858b;
+  --primary-deep: #a13c40;
+  --search-sheen: #ffb7b9;
+  --hold-track: #ff7a83;
+  --hold-spark: #ffadb3;
+  --hold-glow: #ff6573;
+  --hold-glow-strong: #ed4052;
+  --danger-strong: #f2555a;
+  --danger-muted: #e48d91;
+  --status-partial: #e5b45a;
+  --status-unavailable: #ed666d;
+  --star: #e9b45a;
+  --star-muted: #b6a585;
+  --evidence-exact: #6bf178;
+  --evidence-inferred: #d1a86d;
+  --evidence-neutral: #8ba99a;
+  --coverage-shared: #82bc91;
+  --coverage-shared-soft: #b1c5b6;
+  --coverage-shared-heading: #9bb4a1;
+  --coverage-title: #8d97a6;
+  --include-fill: #397956;
+  --include-line: #629f7b;
+  --include-text: #9cd5b2;
+  --success-line: #70ad87;
+  --qui-partial: #f0ce91;
+  --qui-entry: #9aebbb;
+  --indexer-icon: #b0a09b;
+  --chart-cell-text: #f6e6e6;
+  --chart-border: #2c2525;
+  --chart-border-strong: #554044;
+  --chart-accent: #ef6167;
+  --chart-edge-focus: #ffa1a6;
+  /* Neutral ramp: --gray-NN is the step that equals #NNNNNN between --ink (#000) and --paper (#fff). */
+  --gray-08: color-mix(in srgb, var(--paper) 3.14%, var(--ink));
+  --gray-0a: color-mix(in srgb, var(--paper) 3.92%, var(--ink));
+  --gray-0b: color-mix(in srgb, var(--paper) 4.31%, var(--ink));
+  --gray-0c: color-mix(in srgb, var(--paper) 4.71%, var(--ink));
+  --gray-10: color-mix(in srgb, var(--paper) 6.27%, var(--ink));
+  --gray-11: color-mix(in srgb, var(--paper) 6.67%, var(--ink));
+  --gray-12: color-mix(in srgb, var(--paper) 7.06%, var(--ink));
+  --gray-14: color-mix(in srgb, var(--paper) 7.84%, var(--ink));
+  --gray-15: color-mix(in srgb, var(--paper) 8.24%, var(--ink));
+  --gray-16: color-mix(in srgb, var(--paper) 8.63%, var(--ink));
+  --gray-17: color-mix(in srgb, var(--paper) 9.02%, var(--ink));
+  --gray-18: color-mix(in srgb, var(--paper) 9.41%, var(--ink));
+  --gray-19: color-mix(in srgb, var(--paper) 9.8%, var(--ink));
+  --gray-1b: color-mix(in srgb, var(--paper) 10.59%, var(--ink));
+  --gray-20: color-mix(in srgb, var(--paper) 12.55%, var(--ink));
+  --gray-22: color-mix(in srgb, var(--paper) 13.33%, var(--ink));
+  --gray-24: color-mix(in srgb, var(--paper) 14.12%, var(--ink));
+  --gray-25: color-mix(in srgb, var(--paper) 14.51%, var(--ink));
+  --gray-26: color-mix(in srgb, var(--paper) 14.9%, var(--ink));
+  --gray-28: color-mix(in srgb, var(--paper) 15.69%, var(--ink));
+  --gray-29: color-mix(in srgb, var(--paper) 16.08%, var(--ink));
+  --gray-2a: color-mix(in srgb, var(--paper) 16.47%, var(--ink));
+  --gray-30: color-mix(in srgb, var(--paper) 18.82%, var(--ink));
+  --gray-33: color-mix(in srgb, var(--paper) 20%, var(--ink));
+  --gray-35: color-mix(in srgb, var(--paper) 20.78%, var(--ink));
+  --gray-36: color-mix(in srgb, var(--paper) 21.18%, var(--ink));
+  --gray-37: color-mix(in srgb, var(--paper) 21.57%, var(--ink));
+  --gray-38: color-mix(in srgb, var(--paper) 21.96%, var(--ink));
+  --gray-3a: color-mix(in srgb, var(--paper) 22.75%, var(--ink));
+  --gray-3b: color-mix(in srgb, var(--paper) 23.14%, var(--ink));
+  --gray-44: color-mix(in srgb, var(--paper) 26.67%, var(--ink));
+  --gray-45: color-mix(in srgb, var(--paper) 27.06%, var(--ink));
+  --gray-50: color-mix(in srgb, var(--paper) 31.37%, var(--ink));
+  --gray-55: color-mix(in srgb, var(--paper) 33.33%, var(--ink));
+  --gray-58: color-mix(in srgb, var(--paper) 34.51%, var(--ink));
+  --gray-66: color-mix(in srgb, var(--paper) 40%, var(--ink));
+  --gray-70: color-mix(in srgb, var(--paper) 43.92%, var(--ink));
+  --gray-72: color-mix(in srgb, var(--paper) 44.71%, var(--ink));
+  --gray-77: color-mix(in srgb, var(--paper) 46.67%, var(--ink));
+  --gray-82: color-mix(in srgb, var(--paper) 50.98%, var(--ink));
+  --gray-85: color-mix(in srgb, var(--paper) 52.16%, var(--ink));
+  --gray-88: color-mix(in srgb, var(--paper) 53.33%, var(--ink));
+  --gray-99: color-mix(in srgb, var(--paper) 60%, var(--ink));
+  --gray-9b: color-mix(in srgb, var(--paper) 60.78%, var(--ink));
+  --gray-a3: color-mix(in srgb, var(--paper) 63.92%, var(--ink));
+  --gray-aa: color-mix(in srgb, var(--paper) 66.67%, var(--ink));
+  --gray-b5: color-mix(in srgb, var(--paper) 70.98%, var(--ink));
+  --gray-bb: color-mix(in srgb, var(--paper) 73.33%, var(--ink));
+  --gray-cc: color-mix(in srgb, var(--paper) 80%, var(--ink));
+  --gray-d5: color-mix(in srgb, var(--paper) 83.53%, var(--ink));
+  --gray-dd: color-mix(in srgb, var(--paper) 86.67%, var(--ink));
+  --gray-ed: color-mix(in srgb, var(--paper) 92.94%, var(--ink));
+  --gray-ee: color-mix(in srgb, var(--paper) 93.33%, var(--ink));
+  color-scheme: dark;
+}
+
+* {
+  border-color: var(--border);
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Geist, Inter, ui-sans-serif, system-ui, sans-serif;
+}

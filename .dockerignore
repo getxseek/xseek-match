@@ -1,0 +1,13 @@
+node_modules
+.git
+.env
+.env.*
+.local
+.local*
+build
+dist
+*.log
+coverage
+
+playwright-report
+test-results

@@ -1,0 +1,42 @@
+.release-group-watermark {
+  position: absolute;
+  right: 28px;
+  bottom: -15px;
+  width: 65%;
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: normal;
+  color: var(--foreground);
+  opacity: 0.045;
+  pointer-events: none;
+  user-select: none;
+  z-index: -1;
+  text-align: right;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+.release-group-watermark > span {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: clamp(50px, 5.8vw, 80px);
+  line-height: 1;
+  letter-spacing: -3px;
+}
+@media (max-width: 700px) {
+  .release-group-watermark {
+    right: 16px;
+    bottom: -12px;
+    width: 75%;
+  }
+  .release-group-watermark > span {
+    font-size: 54px;
+  }
+}
+
+.release-row .original-title {
+  color: var(--gray-99);
+}
