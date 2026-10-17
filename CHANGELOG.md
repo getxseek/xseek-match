@@ -2,6 +2,11 @@
 
 All notable changes to xseek match will be documented in this file.
 
+## 0.1.1 - 2026-10-17
+
+### Fixed
+- Container image publish: disabled SLSA provenance attestations (`provenance: false`) so multi-arch images are published with Docker v2 manifest lists, restoring compatibility with older Docker daemons (< 20.10.21) and LTS server distributions.
+
 ## 0.1.0 - 2026-10-17
 
 Initial release of xseek match: a release-matching search frontend for your Prowlarr indexers, with *arr and torrent client integrations.
