@@ -18,8 +18,12 @@ This is a single-owner, self-hosted application. All signed-in users share confi
 
 Tests cover first-owner setup, completed-setup refusal, login/session handling, CSRF/origin rejection, cookie attributes, logout, password reset/session revocation, HTTPS origin requirements, throttling and preference persistence. These are implementation checks, not a penetration test or OWASP certification.
 
-The password settings follow OWASP's [Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Session design is informed by the [Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html). Use [ASVS](https://owasp.org/projects/asvs) for a full release review; no ASVS compliance claim is made.
+The password settings follow OWASP's [Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Session design is informed by the [Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html). No ASVS compliance claim is made.
 
-Before public release: independently review authentication and proxy deployment, run container builds on target architectures, test HTTPS deployment end-to-end, inspect dependencies and image vulnerabilities, pin/review CI actions and define an update policy. TLS and HSTS belong at the HTTPS reverse proxy. No MFA or separate user accounts are currently implemented. Rate limits can temporarily deny legitimate logins during an attack, especially behind a shared proxy address.
+TLS termination and HSTS are expected to be handled at the HTTPS reverse proxy. Multi-factor authentication (MFA) and multi-tenant user accounts are not currently implemented. Persistent rate limits apply to failed authentication attempts and can temporarily throttle login requests during an attack, especially when clients share an egress proxy.
 
-Do not include credentials, setup links, session cookies, database files or full service logs in public issues. Rotate any exposed Prowlarr API key through Prowlarr and reset compromised owner credentials through the administrative CLI.
+## Reporting a vulnerability
+
+If you discover a security vulnerability in xseek match, please report it privately through [GitHub Private Vulnerability Reporting](https://github.com/getxseek/xseek-match/security/advisories/new) rather than opening a public issue.
+
+Never include credentials, setup links, session cookies, database files, or unredacted service logs in public discussions. If credentials are exposed, rotate API keys upstream and reset the owner password using the administrative CLI.
