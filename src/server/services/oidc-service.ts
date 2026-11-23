@@ -206,6 +206,11 @@ export class OidcService {
     this.store.audit(event);
   }
 
+  /**
+   * Changes when the owner's password changes, so a sign-in started before a password
+   * change can't finish after it. `password` is the stored Argon2id hash, not the
+   * password itself; this only fingerprints it.
+   */
   private ownerVersion() {
     return digest(this.auth.owner()?.password || '');
   }

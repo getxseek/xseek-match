@@ -31,7 +31,8 @@ export function posterSources(url: string): PosterSources {
     return { preview: sized('w45'), full: sized('w185') };
   }
 
-  const tvdb = parsed.hostname.endsWith('thetvdb.com') && parsed.pathname.match(TVDB_IMAGE);
+  const isTvdb = parsed.hostname === 'thetvdb.com' || parsed.hostname.endsWith('.thetvdb.com');
+  const tvdb = isTvdb && parsed.pathname.match(TVDB_IMAGE);
   if (tvdb && !tvdb[2]) {
     const thumbnail = new URL(parsed);
     thumbnail.pathname = `${tvdb[1]}_t${tvdb[3]}`;

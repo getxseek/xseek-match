@@ -28,7 +28,7 @@ async function fixture(
   let upstreamCalls = 0;
   const searchUrls: URL[] = [];
   const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-    if (String(url).startsWith('http://api-fixture.test')) {
+    if (URL.canParse(String(url)) && new URL(String(url)).host === 'api-fixture.test') {
       if (String(url).includes('/indexer'))
         return Response.json([
           {
