@@ -1,11 +1,14 @@
-FROM node:24-bookworm-slim AS build
+# The release workflow passes this pinned by digest
+ARG BASE_IMAGE=node:24-bookworm-slim
+
+FROM ${BASE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run check:core && npm prune --omit=dev
 
-FROM node:24-bookworm-slim AS runtime
+FROM ${BASE_IMAGE} AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=5178 DATA_DIR=/data
 WORKDIR /app
 RUN mkdir -p /data && chown node:node /data
