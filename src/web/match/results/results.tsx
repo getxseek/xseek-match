@@ -8,6 +8,8 @@ import {
 } from '../../../domain/matching/group';
 import { parseReleaseName } from '../../../parser/parse-release-name';
 import type { SearchMode } from '../../../search-history';
+import { accountProblem, grabReasons, grabScore, suggestedGrab } from '../../../tracker-accounts';
+import { AccountLine, GrabImpactWarning, GrabSuggestion, type TrackerAccounts } from './accounts';
 import { QuiSearchStatus, QuiTorrentContext, type Presence, type PresenceState } from './qui';
 import {
   IndexerIcon,
@@ -39,6 +41,8 @@ type ReleaseRowItemProps = {
   isOutlier: boolean;
   referenceSize: number | null;
   quiPresence: Record<string, Presence[]>;
+  account?: TrackerAccounts[number];
+  suggestion?: { text: string }[];
 };
 
 function ReleaseRowItem({
@@ -48,20 +52,27 @@ function ReleaseRowItem({
   isOutlier,
   referenceSize,
   quiPresence,
+  account,
+  suggestion,
 }: ReleaseRowItemProps) {
   const deviationPercent =
     isOutlier && referenceSize ? formatSizeDeviationPercent(row.size, referenceSize) : null;
 
   return (
     <div className="release-row">
-      <span className="result-indexer-name">
-        <IndexerIcon src={trackerIcon} />
-        <span>{displayName}</span>
+      <span className="result-indexer">
+        <span className="result-indexer-name">
+          <IndexerIcon src={trackerIcon} />
+          <span>{displayName}</span>
+        </span>
+        <AccountLine account={account} />
       </span>
 
       <span className="original-title">
         <span>{row.title}</span>
         <span className="release-indicators">
+          {suggestion && <GrabSuggestion reasons={suggestion} />}
+          <GrabImpactWarning row={row} account={account} />
           <QuiTorrentContext rows={[row]} matches={quiPresence} trackerOnly />
           {isFreeleech(row) && (
             <span
@@ -124,6 +135,7 @@ type ReleaseGroupCardProps = {
   customNames: Record<number, string>;
   quiPresence: Record<string, Presence[]>;
   matching: MatchingConfig;
+  accounts: TrackerAccounts;
 };
 
 function ReleaseGroupCard({
@@ -136,6 +148,7 @@ function ReleaseGroupCard({
   customNames,
   quiPresence,
   matching,
+  accounts,
 }: ReleaseGroupCardProps) {
   const primaryRow = group.rows[0]!;
   const trackerCount = new Set(group.rows.map((row) => row.indexerId)).size;
@@ -150,11 +163,15 @@ function ReleaseGroupCard({
       return rightPresent - leftPresent || left.name.localeCompare(right.name);
     });
 
+  const rowScore = (row: Result) =>
+    grabScore(grabReasons(accounts[row.indexerId], row.size, isFreeleech(row)));
   const sortedRows = [...group.rows].sort(
     (left, right) =>
       Number(important.includes(right.indexerId)) - Number(important.includes(left.indexerId)) ||
+      rowScore(right) - rowScore(left) ||
       left.indexer.localeCompare(right.indexer),
   );
+  const suggestion = suggestedGrab(group.rows, accounts);
 
   return (
     <LazyReleaseDetails flat={flat} className="release-group">
@@ -177,11 +194,13 @@ function ReleaseGroupCard({
             <span>{formatGigabytes(primaryRow.size)}</span>
             {importantTrackers.map((tracker) => {
               const isPresent = group.rows.some((row) => row.indexerId === tracker.id);
+              const account = accounts[tracker.id];
+              const problem = account && accountProblem(account);
               const statusNote = isPresent
                 ? 'found in this group'
                 : excluded.includes(tracker.id)
                   ? 'disabled'
-                  : 'not in returned results';
+                  : `not in returned results${problem ? ` · Yata: ${problem}` : ''}`;
 
               return (
                 <span
@@ -212,6 +231,8 @@ function ReleaseGroupCard({
             isOutlier={consistency.outliers.includes(row)}
             referenceSize={consistency.reference}
             quiPresence={quiPresence}
+            account={accounts[row.indexerId]}
+            suggestion={suggestion?.row === row ? suggestion.reasons : undefined}
           />
         ))}
       </div>
@@ -237,6 +258,7 @@ type ResultsViewProps = {
   allowedResults: Result[];
   matching: MatchingConfig;
   lastSearch: { mode: SearchMode } | null;
+  accounts: TrackerAccounts;
 };
 
 export function ResultsView({
@@ -257,6 +279,7 @@ export function ResultsView({
   allowedResults,
   matching,
   lastSearch,
+  accounts,
 }: ResultsViewProps) {
   if (results === null) return null;
 
@@ -321,6 +344,7 @@ export function ResultsView({
               customNames={customNames}
               quiPresence={quiPresence}
               matching={matching}
+              accounts={accounts}
             />
           );
         })}

@@ -15,6 +15,8 @@ import {
 import { useRef, useState } from 'react';
 import { SettingsSection } from '../../../components/ui/settings-section';
 import { SwitchButton } from '../../../components/ui/switch-button';
+import { accountProblem } from '../../../../tracker-accounts';
+import type { TrackerAccounts } from '../../results/accounts';
 import { IndexerIcon } from '../../results/result-presenters';
 
 export type TrackerInfo = {
@@ -139,6 +141,7 @@ type IndexersPanelProps = {
   onRenameTracker: (id: number, value: string) => void;
   onToggleImportant: (id: number) => void;
   onToggleTracker: (id: number) => void;
+  accounts: TrackerAccounts;
 };
 
 export function IndexersPanel({
@@ -152,6 +155,7 @@ export function IndexersPanel({
   onRenameTracker,
   onToggleImportant,
   onToggleTracker,
+  accounts,
 }: IndexersPanelProps) {
   const [indexerFilter, setIndexerFilter] = useState('');
   const [includedCategories, setIncludedCategories] = useState<string[]>([]);
@@ -289,6 +293,10 @@ export function IndexersPanel({
             {filteredTrackers.map((tracker) => {
               const isDisabled = excluded.includes(tracker.id);
               const isImportant = important.includes(tracker.id);
+              const account = accounts[tracker.id];
+              const problem = account && accountProblem(account);
+              const target = account?.target;
+              const suggestStar = !isImportant && !!target && target.remaining > 0;
               const categoryList = tracker.categories?.length ? tracker.categories : ['Unknown'];
 
               return (
@@ -306,11 +314,19 @@ export function IndexersPanel({
                       onSave={(value) => onRenameTracker(tracker.id, value)}
                     />
                     <div className="indexer-category-labels">{categoryList.join(' \u00b7 ')}</div>
+                    {(problem || target) && (
+                      <div className={`indexer-account ${problem ? 'is-problem' : ''}`}>
+                        {problem
+                          ? `Yata: ${problem}`
+                          : `${target!.remaining} of ${target!.total} promotion requirements left${suggestStar ? '. Worth a star?' : ''}`}
+                      </div>
+                    )}
                   </div>
                   <button
                     type="button"
                     className="indexer-star"
                     aria-label={`Important ${tracker.name}`}
+                    data-suggested={suggestStar || undefined}
                     aria-pressed={isImportant}
                     onClick={(event) => {
                       event.preventDefault();

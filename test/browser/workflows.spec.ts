@@ -824,6 +824,54 @@ test('qui presence is reused for a minute when re-running a search', async ({ pa
   expect(presenceCalls).toBe(1);
 });
 
+test('Yata accounts show standing, warn over buffer and suggest a grab', async ({ page }) => {
+  await fixture(page);
+  const gib = 1024 ** 3;
+  await page.route('**/api/match/search**', (route) =>
+    route.fulfill({
+      json: {
+        results: rows.map((row) => ({
+          ...row,
+          size: 60 * gib,
+          indexerFlags: row.indexerId === 2 ? ['freeleech'] : [],
+        })),
+        cached: true,
+      },
+    }),
+  );
+  await page.route('**/api/match/integrations', async (route) => {
+    if (route.request().method() === 'GET')
+      return route.fulfill({ json: { connections: [], capabilities: ['tracker-accounts'] } });
+    if (route.request().postDataJSON().action !== 'accounts') return route.fallback();
+    const account = (indexerId: number, bufferGib: number) => ({
+      indexerId,
+      connection: 'Yata',
+      name: 'Tracker ' + indexerId,
+      status: 'ok',
+      ratio: 1.2,
+      uploadedGib: 60 + bufferGib,
+      downloadedGib: 60,
+      bufferGib,
+      updatedAt: 1783958100,
+    });
+    return route.fulfill({
+      json: { accounts: [account(1, 10), account(2, 512)], unmatched: [], failed: [] },
+    });
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event('integrations-changed')));
+  const input = page.getByRole('combobox');
+  await input.fill('Show S01');
+  await input.press('Enter');
+  await page.locator('.release-group summary').first().click();
+  const releaseRows = page.locator('.release-row');
+  await expect(releaseRows.first()).toContainText('Tracker 2');
+  await expect(releaseRows.first().locator('.grab-suggestion')).toBeVisible();
+  await expect(releaseRows.nth(1).locator('.account-line')).toHaveText('1.20 · 10.0 GiB');
+  await expect(
+    releaseRows.nth(1).getByRole('img', { name: /Over buffer by 50\.0 GiB/ }),
+  ).toBeVisible();
+});
+
 test('logs open scrolled to the newest entry', async ({ page }) => {
   await fixture(page);
   await page.route('**/api/match/logs', (route) =>

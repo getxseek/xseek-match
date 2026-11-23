@@ -29,7 +29,7 @@ TLS termination and HSTS are expected to be handled at the HTTPS reverse proxy. 
 
 If you discover a security vulnerability in xseek match, please report it privately through [GitHub Private Vulnerability Reporting](https://github.com/getxseek/xseek-match/security/advisories/new) rather than opening a public issue.
 
-Never include credentials, setup links, session cookies, database files, or unredacted service logs in public discussions. If credentials are exposed, rotate any exposed Prowlarr API key through Prowlarr and reset the owner password using the administrative CLI.
+Never include credentials, setup links, session cookies, database files, or unredacted service logs in public discussions. If credentials are exposed, rotate any exposed Prowlarr or integration API key upstream and reset the owner password using the administrative CLI.
 
 ## Machine API v1
 

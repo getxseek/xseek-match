@@ -10,11 +10,12 @@ Find the same release across all your trackers, compatible with the Prowlarr you
 
 ---
 
-xseek match searches your Prowlarr indexers all at once, groups matching releases together, with integrations for Sonarr, Radarr, and qui.
+xseek match searches your Prowlarr indexers all at once, groups matching releases together, with integrations for Sonarr, Radarr, qui and Yata.
 
 - **Release matching**: Instead of relying on exact release names, results are matched by their parsed metadata, even if a tracker renames an upload.
 - **Preferred grabs**: Got a favourite tracker, one you're working towards or one with better bonuses, set it as a favourite.
 - **Sonarr & Radarr integration**: Pulls title aliases and scene numbering directly from your *arr instances to broaden search coverage.
+- **Yata integration**: See your ratio and buffer on each tracker next to its results, get warned before a grab overdraws your buffer, and get pointed at the freeleech copy or the tracker you're working towards a promotion on.
 - **qui integration**: Connect your `qui` instance to highlight releases you already have in your client, never duplicate grab again!
 - **Search history and stats**: Saves and heavily caches your searches to improve your search experience, with stats on content overlap across your trackers.
 

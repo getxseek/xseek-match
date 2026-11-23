@@ -24,8 +24,8 @@
     "reset-password": "node build/server/reset-password.js",
     "check:core": "npm run format:check && npm run typecheck && npm test && npm run build",
     "test:browser": "playwright test",
-    "format:check": "prettier --check \"src/server/**/*.ts\" \"src/contracts/**/*.ts\" \"src/domain/**/*.ts\" \"src/parser/**/*.ts\" \"src/web/**/*.{tsx,ts,css}\" \"test/**/*.{ts,tsx}\" src/search-history.ts src/search-input.ts src/qui-result.ts src/tracker-entry.ts src/integration-capabilities.ts src/version.ts playwright.config.ts vite.config.ts vitest.config.ts \"scripts/*.mjs\"",
-    "format": "prettier --write \"src/server/**/*.ts\" \"src/contracts/**/*.ts\" \"src/domain/**/*.ts\" \"src/parser/**/*.ts\" \"src/web/**/*.{tsx,ts,css}\" \"test/**/*.{ts,tsx}\" src/search-history.ts src/search-input.ts src/qui-result.ts src/tracker-entry.ts src/integration-capabilities.ts src/version.ts playwright.config.ts vite.config.ts vitest.config.ts \"scripts/*.mjs\""
+    "format:check": "prettier --check \"src/server/**/*.ts\" \"src/contracts/**/*.ts\" \"src/domain/**/*.ts\" \"src/parser/**/*.ts\" \"src/web/**/*.{tsx,ts,css}\" \"test/**/*.{ts,tsx}\" src/search-history.ts src/search-input.ts src/qui-result.ts src/tracker-accounts.ts src/tracker-entry.ts src/integration-capabilities.ts src/version.ts playwright.config.ts vite.config.ts vitest.config.ts \"scripts/*.mjs\"",
+    "format": "prettier --write \"src/server/**/*.ts\" \"src/contracts/**/*.ts\" \"src/domain/**/*.ts\" \"src/parser/**/*.ts\" \"src/web/**/*.{tsx,ts,css}\" \"test/**/*.{ts,tsx}\" src/search-history.ts src/search-input.ts src/qui-result.ts src/tracker-accounts.ts src/tracker-entry.ts src/integration-capabilities.ts src/version.ts playwright.config.ts vite.config.ts vitest.config.ts \"scripts/*.mjs\""
   },
   "dependencies": {
     "argon2": "^0.45.1",

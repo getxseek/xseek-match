@@ -1268,6 +1268,17 @@ footer span {
 .indexer-star[aria-pressed='true'] {
   color: var(--star);
 }
+.indexer-account {
+  font-size: 10px;
+  color: var(--gray-66);
+  margin-top: 3px;
+}
+.indexer-account.is-problem {
+  color: var(--warning-muted);
+}
+.indexer-star[data-suggested] {
+  color: var(--star-muted);
+}
 .important-indexers {
   display: flex;
   gap: 8px;
@@ -2692,6 +2703,36 @@ html {
   .results-mode-transition {
     animation: none;
   }
+}
+
+.result-indexer {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.account-line {
+  padding-left: 21px;
+  font-size: 10px;
+  color: var(--gray-66);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.account-line.is-warning,
+.account-line.is-problem {
+  color: var(--warning-muted);
+}
+.grab-impact {
+  display: inline-flex;
+  align-items: center;
+  color: var(--danger-text);
+}
+.grab-suggestion {
+  display: inline-flex;
+  align-items: center;
+  color: var(--positive);
 }
 
 .tracker-warning {

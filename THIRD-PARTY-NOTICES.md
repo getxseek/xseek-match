@@ -6,7 +6,7 @@ xseek match is an independent project. It isn't affiliated with or endorsed by a
 
 ## Service logos
 
-`src/web/public/icons/` holds the Prowlarr, Sonarr, Radarr and qui logos, taken from the [selfh.st icons](https://github.com/selfhst/icons) collection. That collection is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). 
+`src/web/public/icons/` holds the Prowlarr, Sonarr, Radarr and qui logos, taken from the [selfh.st icons](https://github.com/selfhst/icons) collection. The Yata logo is `static/logo.svg` from the Yata repository. That collection is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). 
 
 The logos are trademarks of their projects. They appear only to label connections to those services. 
 
@@ -16,6 +16,7 @@ The logos are trademarks of their projects. They appear only to label connection
 | Sonarr | [Sonarr](https://github.com/Sonarr/Sonarr) | GPL-3.0 |
 | Radarr | [Radarr](https://github.com/Radarr/Radarr) | GPL-3.0 |
 | qui | [qui](https://github.com/autobrr/qui) by autobrr | GPL-2.0-or-later |
+| Yata | [Yata](https://github.com/Yata-Dash/Yata-Dash) | GPL-3.0 |
 
 xseek match calls these services over their HTTP APIs and contains none of their code.
 

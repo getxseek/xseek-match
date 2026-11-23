@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { connectionFromInput } from '../lib/connection-input.js';
+import type { Indexer } from '../lib/prowlarr-results.js';
 import {
   IntegrationsStore,
   toPublicConnection,
@@ -10,6 +11,7 @@ import { probeConnection, requestConnection } from './connection-client.js';
 import { QuiFeatures, validateHashes, validateReleases } from './qui-service.js';
 import { SonarrAliases } from './sonarr-aliases.js';
 import { parseLookupRequest, TitleLookup, type LookupTarget } from './title-lookup.js';
+import { YataAccounts } from './yata-service.js';
 
 type Input = Record<string, unknown>;
 
@@ -29,10 +31,11 @@ function servesTarget(connection: PublicConnection, target: LookupTarget): boole
   return tv || movie;
 }
 
-/** Sonarr, Radarr and qui connections: CRUD, probing, title lookup and qui presence. */
+/** Sonarr, Radarr, qui and Yata connections: CRUD, probing, title lookup, qui presence and Yata accounts. */
 export class Integrations {
   private store: IntegrationsStore;
   private qui = new QuiFeatures(requestConnection);
+  private yata = new YataAccounts(requestConnection);
   private aliases = new SonarrAliases(() => this.titles.invalidate());
   private titles = new TitleLookup(this.aliases);
   private operations = new Set<Promise<unknown>>();
@@ -42,6 +45,7 @@ export class Integrations {
     lookup: (input) => this.lookupTitle(input),
     presence: (input) => this.qui.presence(this.quiConnections(), validateHashes(input.hashes)),
     'release-presence': (input) => this.releasePresence(input),
+    accounts: () => this.trackerAccounts(),
     delete: (input) => this.deleteConnection(input),
     enabled: (input) => this.setEnabled(input),
     save: (input) => this.saveConnection(input),
@@ -51,6 +55,7 @@ export class Integrations {
   constructor(
     dataDir: string,
     private probe = probeConnection,
+    private indexers: () => Promise<Pick<Indexer, 'id' | 'origin'>[]> = async () => [],
   ) {
     this.store = new IntegrationsStore(join(dataDir, 'match.sqlite'));
   }
@@ -81,8 +86,13 @@ export class Integrations {
   async close(): Promise<void> {
     this.closing = true;
     await Promise.allSettled([...this.operations, this.aliases.settled(), this.titles.settled()]);
-    await this.qui.close();
+    await Promise.all([this.qui.close(), this.yata.close()]);
     this.store.close();
+  }
+
+  private clearCaches(): void {
+    this.qui.clear();
+    this.yata.clear();
   }
 
   private get(id: string): Connection {
@@ -97,6 +107,14 @@ export class Integrations {
     return this.enabledConnections()
       .filter((connection) => connection.kind === 'qui')
       .map((connection) => this.get(connection.id));
+  }
+
+  private async trackerAccounts() {
+    const connections = this.enabledConnections()
+      .filter((connection) => connection.kind === 'yata')
+      .map((connection) => ({ ...this.get(connection.id), kind: 'yata' as const }));
+    if (!connections.length) return { accounts: [], unmatched: [], failed: [] };
+    return this.yata.accounts(connections, await this.indexers());
   }
 
   private lookupTitle(input: Input) {
@@ -120,7 +138,7 @@ export class Integrations {
   }
 
   private deleteConnection(input: Input) {
-    this.qui.clear();
+    this.clearCaches();
     const id = requireConnectionId(input);
     this.get(id);
     this.store.delete(id);
@@ -128,7 +146,7 @@ export class Integrations {
   }
 
   private setEnabled(input: Input) {
-    this.qui.clear();
+    this.clearCaches();
     if (typeof input.id !== 'string' || typeof input.enabled !== 'boolean') {
       throw new Error('Invalid enabled state.');
     }
@@ -147,7 +165,7 @@ export class Integrations {
   }
 
   private async saveConnection(input: Input) {
-    this.qui.clear();
+    this.clearCaches();
     const connection = this.connectionFrom(input);
     const detail = await this.probeOrThrow(connection);
     const saved: Connection = { ...connection, checkedAt: Date.now(), status: 'connected', detail };

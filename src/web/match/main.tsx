@@ -53,6 +53,7 @@ import { useQuiPresence } from './results/qui';
 import { IndexerIcon } from './results/result-presenters';
 import './results/result-presenters.css';
 import { ResultsView } from './results/results';
+import { useTrackerAccounts } from './results/accounts';
 import {
   matchesSearchResultFilters,
   SearchFilterPopover,
@@ -453,6 +454,7 @@ function App() {
   } | null>(null);
   const [results, setResults] = useState<Result[] | null>(null);
   const quiState = useQuiPresence(results, lastSearch?.term || '');
+  const accounts = useTrackerAccounts(refreshKey);
   const quiPresence = quiState.matches;
   const [quiOnly, setQuiOnly] = useState(false);
   useEffect(() => setQuiOnly(false), [results]);
@@ -760,6 +762,7 @@ function App() {
         onRenameTracker={renameTracker}
         onToggleImportant={toggleImportantTracker}
         onToggleTracker={toggleTracker}
+        accounts={accounts}
       />
     );
   }
@@ -1072,6 +1075,7 @@ function App() {
             allowedResults={allowedResults}
             matching={matching}
             lastSearch={lastSearch}
+            accounts={accounts}
           />
         </main>
       )}

@@ -8,6 +8,12 @@ export interface IntegrationsRouteOptions {
   statistics?: IStatisticsStore;
 }
 
+function readActionMetric(action: unknown, result: unknown): string {
+  if (action === 'accounts') return 'yata_accounts';
+  if (action === 'presence' || action === 'release-presence') return 'qui_presence';
+  return (result as { cached?: boolean }).cached ? 'lookup_cached' : 'lookup_live';
+}
+
 export function registerIntegrationsRoute(router: Router, options: IntegrationsRouteOptions): void {
   let isMutating = false;
 
@@ -38,7 +44,7 @@ export function registerIntegrationsRoute(router: Router, options: IntegrationsR
     let acquiredLock = false;
     try {
       const input = await readJsonObjectBody(req, 131_072);
-      const isReadAction = ['lookup', 'presence', 'release-presence'].includes(
+      const isReadAction = ['lookup', 'presence', 'release-presence', 'accounts'].includes(
         String(input.action),
       );
 
@@ -58,13 +64,10 @@ export function registerIntegrationsRoute(router: Router, options: IntegrationsR
       try {
         const result = await options.store.execute(input);
         if (isReadAction) {
-          const metricName =
-            input.action === 'presence' || input.action === 'release-presence'
-              ? 'qui_presence'
-              : (result as { cached?: boolean }).cached
-                ? 'lookup_cached'
-                : 'lookup_live';
-          options.statistics?.timing(metricName, performance.now() - startTime);
+          options.statistics?.timing(
+            readActionMetric(input.action, result),
+            performance.now() - startTime,
+          );
         }
         sendJson(res, 200, result);
       } catch (error) {

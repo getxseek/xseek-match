@@ -3,7 +3,7 @@ import type { IntegrationKind } from '../../integration-capabilities.js';
 import type { ConnectionRecord as Connection } from '../storage/integrations-store.js';
 import { validateBaseUrl } from './safe-url.js';
 
-const CONNECTION_KINDS: readonly string[] = ['sonarr', 'radarr', 'qui'];
+const CONNECTION_KINDS: readonly string[] = ['sonarr', 'radarr', 'qui', 'yata'];
 const API_KEY_FORBIDDEN_CHARACTERS = /[\x00-\x20\x7f]/;
 
 function validName(name: unknown): string {
@@ -15,7 +15,7 @@ function validName(name: unknown): string {
 
 function validKind(kind: unknown, existing: Connection | undefined): IntegrationKind {
   if (!CONNECTION_KINDS.includes(String(kind))) {
-    throw new Error('Choose Sonarr, Radarr or qui.');
+    throw new Error('Choose Sonarr, Radarr, qui or Yata.');
   }
   if (existing && kind !== existing.kind) {
     throw new Error('Service type cannot be changed. Add a new connection instead.');

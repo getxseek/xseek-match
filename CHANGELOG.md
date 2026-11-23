@@ -42,6 +42,15 @@ All notable changes to xseek match will be documented in this file.
 - Share search cache, upstream pauses, deadline and one live admission slot across UI/API; coalesce identical work with independent waiter cancellation, bounded responses and per-key budgets.
 - Preserve browser session origin/CSRF checks; return stable API errors/request IDs and secret-free external DTOs with explicit unknown completeness.
 
+### Yata
+- Connect your [Yata](https://github.com/Yata-Dash/Yata-Dash) dashboard with a read-only API token to see your account on each tracker while you pick a grab.
+- Ratio and buffer under each tracker in a release group, with hit and runs, rank and promotion progress on hover.
+- A warning when a non-freeleech grab would use more than your buffer on that tracker, with the ratio before and after.
+- Rows inside a release group now rank freeleech copies and trackers with open promotion requirements higher, and trackers where the grab overdraws your buffer lower. Starred trackers still come first. A clear winner gets a suggested-grab mark.
+- Indexer settings show promotion progress from Yata and point out unstarred trackers that are worth a star.
+- Trackers Yata can't refresh show the reason in indexer settings and on the starred tracker chips of a result.
+- Yata trackers are matched to Prowlarr indexers by site address. Integration settings list any that didn't match and say when Yata can't be reached.
+
 ## 0.1.1 - 2026-10-17
 
 ### Fixed

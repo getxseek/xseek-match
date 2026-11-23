@@ -62,7 +62,6 @@ export function installApi(
   const definitions = new TrackerDefinitions(dataDir);
   const xem = new Xem(sqlitePath);
   const statistics = new StatisticsStore(sqlitePath);
-  const integrations = new Integrations(dataDir);
 
   const logger = new ActivityLog();
   const prowlarrService = new ProwlarrService({
@@ -72,6 +71,9 @@ export function installApi(
     cacheStore,
     logger,
   });
+  const integrations = new Integrations(dataDir, undefined, () =>
+    prowlarrUrl && env.PROWLARR_API_KEY ? prowlarrService.getIndexers() : Promise.resolve([]),
+  );
 
   const startedAt = Date.now();
   const git = readGitStatus();
