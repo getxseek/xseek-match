@@ -1,6 +1,6 @@
 # Match API v1
 
-Resolve TV/movie titles and search releases from another application. Create a named key in **Settings > API access**, choose its scopes, and copy it into your consumer's secret store. Keys expire after 90 days unless you choose no expiry. The secret is shown once.
+Resolve TV/movie titles and search releases from another application. Create a named key in **Settings → API access**, choose its scopes, and copy it into your consumer's secret store. Keys expire after 90 days unless you choose no expiry. The secret is shown once.
 
 See the [OpenAPI 3.1 contract](openapi.yaml) for request and response schemas.
 

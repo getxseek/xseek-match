@@ -17,6 +17,8 @@ xseek match searches your Prowlarr indexers all at once, groups matching release
 - **Sonarr & Radarr integration**: Pulls title aliases and scene numbering directly from your *arr instances to broaden search coverage.
 - **Yata integration**: See your ratio and buffer on each tracker next to its results, get warned before a grab overdraws your buffer, and get pointed at the freeleech copy or the tracker you're working towards a promotion on.
 - **qui integration**: Connect your `qui` instance to highlight releases you already have in your client, never duplicate grab again!
+- **API**: Search your trackers and look up titles from your own scripts and tools, with scoped keys you can revoke at any time.
+- **Single sign-on**: Sign in with Pocket ID or any standard OpenID Connect provider. Your password keeps working as a fallback.
 - **Search history and stats**: Saves and heavily caches your searches to improve your search experience, with stats on content overlap across your trackers.
 
 ![xseek match search results](docs/assets/screenshot-hero.png)
@@ -137,17 +139,19 @@ All settings are environment variables, read at startup. Restart after changing 
 | `PORT` | `5178` | Port to listen on |
 | `HOST` | `0.0.0.0` | Listen address; `127.0.0.1` keeps it local |
 | `DATA_DIR` | `/data` in Docker, `.local` natively | Database and caches |
+| `API_V1_ENABLED` | `true` | Set to `false` to turn off the API |
 
 Everything else (integrations, important trackers, matching rules, cache lifetime, accent color) lives in the app under **Settings**.
 
 ## Integrations
 
-Add Sonarr, Radarr and qui under **Settings → Integrations**. You can add several of each.
+Add Sonarr, Radarr, qui and Yata under **Settings → Integrations**. You can add several of each.
 
 | Service | What xseek match uses it for |
 | --- | --- |
 | Sonarr / Radarr | Title suggestions, posters and aliases for *Enrich* |
 | qui | Marking results you already have in your torrent client |
+| Yata | Your ratio, buffer, hit and runs and promotion progress on each tracker |
 
 These are read-only calls. API keys stay on the server and are never sent back to the browser. They're stored unencrypted in the database, so treat the data volume and its backups like credentials.
 
@@ -155,7 +159,7 @@ These are read-only calls. API keys stay on the server and are never sent back t
 
 There's a single owner account. Change your password or sign out under **Settings → Accounts**.
 
-Optional standard OpenID Connect sign-in supports Pocket ID and compatible providers. Link the owner explicitly from **Accounts → Security** after local setup. See [OIDC configuration, sessions and recovery](docs/oidc.md). Local password sign-in stays enabled.
+You can also sign in with Pocket ID or another standard OpenID Connect provider. It needs an HTTPS `APP_ORIGIN`. Set it up with the `OIDC_*` variables in `.env.example`, then link the owner under **Accounts → Security**. See [OIDC configuration, sessions and recovery](docs/oidc.md).
 
 Forgot it? Reset it directly from the console:
 
@@ -225,13 +229,15 @@ npm run check           # Runs core checks followed by browser tests
 
 ## API v1
 
-Machine consumers can resolve TV/movie titles and search normalized releases with named, scoped API keys. Create keys in **Settings > API access**; credentials are shown once. See the [consumer quickstart and operating limits](docs/api/README.md) and [OpenAPI 3.1 contract](docs/api/openapi.yaml). Keys cannot access browser administration or integration credentials.
+Search your trackers and look up titles from your own scripts and tools. Create a scoped key under **Settings → API access**. Keys can't sign in to the app or touch your settings, and you can revoke them at any time.
+
+See the [quickstart and limits](docs/api/README.md) and the [OpenAPI 3.1 contract](docs/api/openapi.yaml).
 
 ## Security
 
 xseek match is built for personal use.
 
-- Passwords use Argon2id. Sessions are HttpOnly, SameSite=Strict cookies, and writes checks the origin and a CSRF token.
+- Passwords use Argon2id. Sessions are HttpOnly, SameSite=Strict cookies, and writes check the origin and a CSRF token.
 - The container runs as a non-root user on a read-only filesystem with all capabilities dropped.
 - Outgoing requests to your services pin DNS, keep TLS verification on, refuse redirects and block cloud metadata addresses.
 
