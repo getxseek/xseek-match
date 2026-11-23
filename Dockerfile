@@ -6,7 +6,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run check:core && npm prune --omit=dev
+# CI runs the checks; the image only needs the build
+RUN npm run build && npm prune --omit=dev
 
 FROM ${BASE_IMAGE} AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=5178 DATA_DIR=/data
