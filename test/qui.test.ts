@@ -189,7 +189,7 @@ it('uses tracker host and torrent ID from comments without trusting a reported h
     title,
     size: 10000,
     hash,
-    sourceUrl: 'https://midnightscene.cc/torrents/45226?foo=bar',
+    sourceUrl: 'https://tracker.example/torrents/45226?foo=bar',
   };
   const torrent = {
     hash,
@@ -198,7 +198,7 @@ it('uses tracker host and torrent ID from comments without trusting a reported h
     state: 'stalledUP',
     progress: 1,
     comment:
-      'This torrent was downloaded from MidnightScene. https://midnightscene.cc/torrents/45226',
+      'This torrent was downloaded from ExampleTracker. https://tracker.example/torrents/45226',
   };
   const matches = matchQuiReleases([release], [torrent], connection, { id: 1, name: 'Client' });
   expect(matches[0]?.evidence).toBe('entry');
@@ -213,7 +213,7 @@ it('uses tracker host and torrent ID from comments without trusting a reported h
   ).toEqual([]);
   expect(
     matchQuiReleases(
-      [{ ...release, sourceUrl: 'https://midnightscene.cc/torrents/45227' }],
+      [{ ...release, sourceUrl: 'https://tracker.example/torrents/45227' }],
       [torrent],
       connection,
       { id: 1, name: 'Client' },
