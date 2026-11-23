@@ -79,10 +79,20 @@ function hasSameVariantFlags(left: Parsed, right: Parsed): boolean {
   );
 }
 
+function areEncodersCompatible(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  if (!left || !right || left === right) return true;
+  if ((left === 'H264' && right === 'X264') || (left === 'X264' && right === 'H264')) return true;
+  if ((left === 'H265' && right === 'X265') || (left === 'X265' && right === 'H265')) return true;
+  return false;
+}
+
 function hasCompatibleSourceAndCodec(left: Parsed, right: Parsed): boolean {
   return (
     areOptionalTagsCompatible(left.source, right.source) &&
-    areOptionalTagsCompatible(left.encoder, right.encoder) &&
+    areEncodersCompatible(left.encoder, right.encoder) &&
     areOptionalTagsCompatible(left.webProvider, right.webProvider) &&
     areOptionalTagsCompatible(left.webDelivery, right.webDelivery)
   );

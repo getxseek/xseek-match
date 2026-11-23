@@ -1,17 +1,16 @@
 export interface ParodyTracker {
   id: number;
-  realName: string;
   name: string;
   abbr: string;
   categories: string[];
   isPrimary?: boolean;
 }
 
+// Your own real-to-mock map: copy real-names.example.json to .local/screenshot-fixture/real-names.json (gitignored).
 export const PARODY_TRACKERS: ParodyTracker[] = [
   // Primaries
   {
     id: 1,
-    realName: 'Seedpool',
     name: 'SeedLagoon',
     abbr: 'SL',
     categories: ['Anime', 'TV', 'Movies'],
@@ -19,7 +18,6 @@ export const PARODY_TRACKERS: ParodyTracker[] = [
   },
   {
     id: 2,
-    realName: 'Orpheus',
     name: 'Eurydice',
     abbr: 'EURY',
     categories: ['Music', 'Audio'],
@@ -27,7 +25,6 @@ export const PARODY_TRACKERS: ParodyTracker[] = [
   },
   {
     id: 3,
-    realName: 'MyAnonaMouse',
     name: 'MySecretHamster',
     abbr: 'MSH',
     categories: ['Books', 'Audiobooks'],
@@ -35,7 +32,6 @@ export const PARODY_TRACKERS: ParodyTracker[] = [
   },
   {
     id: 4,
-    realName: 'AnimeBytes',
     name: 'WaifuBytes',
     abbr: 'WB',
     categories: ['Anime', 'Manga'],
@@ -44,28 +40,24 @@ export const PARODY_TRACKERS: ParodyTracker[] = [
   // Secondaries & References
   {
     id: 5,
-    realName: 'MidnightScene',
     name: '3AMPre',
     abbr: '3AM',
     categories: ['TV', 'Movies'],
   },
   {
     id: 6,
-    realName: 'DigitalCore',
     name: 'CyberCore',
     abbr: 'CC',
     categories: ['General', '0day'],
   },
   {
     id: 7,
-    realName: 'PixelCove',
     name: 'VoxelBay',
     abbr: 'VB',
     categories: ['Games', 'Apps', '3D'],
   },
   {
     id: 8,
-    realName: 'Zenith',
     name: 'ApexPeak',
     abbr: 'APX',
     categories: ['TV', 'Movies'],

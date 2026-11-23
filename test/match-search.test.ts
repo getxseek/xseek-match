@@ -121,6 +121,61 @@ describe('search result grouping', () => {
       ]),
     ).toHaveLength(4);
   });
+  it('groups releases across equivalent encoder aliases (H.264/x264 and H.265/x265)', () => {
+    expect(
+      groupResults([
+        row(1, 'Everybody Hates Chris S04 1080p AMZN WEB-DL DD+ 5.1 H.264-alfaHD', 39846871040),
+        row(2, 'Everybody.Hates.Chris.S04.1080p.AMZN.WEB-DL.DD+5.1.x264-alfaHD', 39846871040),
+      ]),
+    ).toHaveLength(1);
+    expect(
+      groupResults([
+        row(1, 'Show.S01.1080p.WEB-DL.H265-GROUP', 2000000000),
+        row(2, 'Show.S01.1080p.WEB-DL.x265-GROUP', 2000000000),
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('groups releases across equivalent static HDR tags (HDR and HDR10)', () => {
+    expect(
+      groupResults([
+        row(1, 'Movie.2024.2160p.WEB-DL.HDR.H265-GROUP', 15000000000),
+        row(2, 'Movie.2024.2160p.WEB-DL.HDR10.H265-GROUP', 15000000000),
+      ]),
+    ).toHaveLength(1);
+
+    expect(
+      groupResults([
+        row(1, 'Movie.2024.2160p.WEB-DL.HDR.H265-GROUP', 15000000000),
+        row(2, 'Movie.2024.2160p.WEB-DL.HDR10+.H265-GROUP', 15000000000),
+      ]),
+    ).toHaveLength(2);
+  });
+
+  it('keeps SDR, HDR10 and HLG copies apart', () => {
+    expect(
+      groupResults([
+        row(1, 'Movie.2024.2160p.WEB-DL.H265-GROUP', 15000000000),
+        row(2, 'Movie.2024.2160p.WEB-DL.HDR10.H265-GROUP', 15000000000),
+      ]),
+    ).toHaveLength(2);
+    expect(
+      groupResults([
+        row(1, 'Movie.2024.2160p.WEB-DL.HLG.H265-GROUP', 15000000000),
+        row(2, 'Movie.2024.2160p.WEB-DL.HDR10.H265-GROUP', 15000000000),
+      ]),
+    ).toHaveLength(2);
+  });
+
+  it('groups Dolby Vision copies tagged HDR and HDR10', () => {
+    expect(
+      groupResults([
+        row(1, 'Movie.2024.2160p.WEB-DL.DV.HDR.H265-GROUP', 15000000000),
+        row(2, 'Movie.2024.2160p.WEB-DL.DV.HDR10.H265-GROUP', 15000000000),
+      ]),
+    ).toHaveLength(1);
+  });
+
   it('flags size differences anywhere in a release group', () => {
     expect(
       groupResults([row(1, undefined, 1000), row(2, undefined, 1019), row(3, undefined, 1038)])[0]!

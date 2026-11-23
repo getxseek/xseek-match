@@ -56,6 +56,10 @@ All notable changes to xseek match will be documented in this file.
 ### Fixed
 - Container image publish: disabled SLSA provenance attestations (`provenance: false`) so multi-arch images are published with Docker v2 manifest lists, restoring compatibility with older Docker daemons (< 20.10.21) and LTS server distributions.
 
+### Changed
+- The screenshot fixture keeps only the mock tracker names. To keep a map from your real trackers to the mock ones, copy `tools/screenshot-fixture/real-names.example.json` to `.local/screenshot-fixture/real-names.json`, which git ignores.
+
+
 ## 0.1.0 - 2026-10-17
 
 Initial release of xseek match: a release-matching search frontend for your Prowlarr indexers, with *arr and torrent client integrations.

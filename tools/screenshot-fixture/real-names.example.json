@@ -1,0 +1,34 @@
+{
+  "1": {
+    "real": "Your general tracker",
+    "mock": "SeedLagoon"
+  },
+  "2": {
+    "real": "Your music tracker",
+    "mock": "Eurydice"
+  },
+  "3": {
+    "real": "Your book tracker",
+    "mock": "MySecretHamster"
+  },
+  "4": {
+    "real": "Your anime tracker",
+    "mock": "WaifuBytes"
+  },
+  "5": {
+    "real": "Your scene tracker",
+    "mock": "3AMPre"
+  },
+  "6": {
+    "real": "Your 0day tracker",
+    "mock": "CyberCore"
+  },
+  "7": {
+    "real": "Your games tracker",
+    "mock": "VoxelBay"
+  },
+  "8": {
+    "real": "Your second general tracker",
+    "mock": "ApexPeak"
+  }
+}
