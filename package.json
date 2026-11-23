@@ -28,27 +28,27 @@
     "format": "prettier --write \"src/server/**/*.ts\" \"src/contracts/**/*.ts\" \"src/domain/**/*.ts\" \"src/parser/**/*.ts\" \"src/web/**/*.{tsx,ts,css}\" \"test/**/*.{ts,tsx}\" src/search-history.ts src/search-input.ts src/qui-result.ts src/tracker-accounts.ts src/tracker-entry.ts src/integration-capabilities.ts src/version.ts playwright.config.ts vite.config.ts vitest.config.ts \"scripts/*.mjs\""
   },
   "dependencies": {
-    "argon2": "^0.45.1",
+    "argon2": "^0.45.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.40.0",
-    "openid-client": "6.8.8",
+    "lucide-react": "^1.76.0",
+    "openid-client": "6.9.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.7.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
-    "@playwright/test": "^1.64.1",
-    "@tailwindcss/vite": "^4.3.3",
+    "@playwright/test": "^1.65.1",
+    "@tailwindcss/vite": "^4.3.5",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
-    "@vitejs/plugin-react": "^6.1.1",
-    "prettier": "^3.9.10",
+    "@vitejs/plugin-react": "^6.3.0",
+    "prettier": "^3.10.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.8",
     "vitest": "^4.1.8"
   }
 }
