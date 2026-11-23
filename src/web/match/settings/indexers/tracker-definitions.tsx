@@ -43,7 +43,7 @@ export function TrackerDefinitionsTask() {
     <article className="info-card task-card">
       <div className="task-heading">
         <h3>Refresh tracker definitions</h3>
-        <Button size="sm" disabled={running} onClick={() => void load(true)}>
+        <Button variant="secondary" size="sm" disabled={running} onClick={() => void load(true)}>
           {running ? 'Refreshing…' : 'Run now'}
         </Button>
       </div>
@@ -65,7 +65,6 @@ export function TrackerDefinitionsTask() {
           <dd>{state?.trackers.length ?? '—'}</dd>
         </div>
       </dl>
-      <p className="match-note">Source: fHori / Private-Trackers-Spreadsheet</p>
       {(state?.error || error) && (
         <p role="status" className="match-note">
           {state?.error || error}

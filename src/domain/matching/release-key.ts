@@ -1,5 +1,5 @@
 /**
- * Release lookup key construction — derived from xseek (xseek:78f9e8b).
+ * Release lookup key construction — derived from xseek (xseek:60ddf7f).
  */
 function normalizedTag(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -41,10 +41,40 @@ export function isEpisodeSlice(parts: ReleaseSlice): boolean {
   return parts.season != null || parts.episode != null;
 }
 
+export type ReleaseKeyParts = ReleaseSlice & { normalizedGroup: string | null };
+
+export type TitleReading = { titleSlug: string | null; season: number | null };
+
+/**
+ * Every key a release can be looked up under: its own key first, then the
+ * slice under each group alias (`groupAliases`) and each title reading
+ * (`titleReadings`: a season numeral, a seasonless pack as season 1). These
+ * only bucket candidates; the pair rules in release-pair.ts decide whether two
+ * releases match.
+ */
+export function releaseLookupKeys(
+  parts: ReleaseKeyParts & {
+    groupAliases?: readonly string[];
+    titleReadings?: readonly TitleReading[];
+  },
+): string[] {
+  const keys = new Set<string>();
+  const own = releaseLookupKey(parts);
+  if (own) keys.add(own);
+  const readings = parts.titleReadings ?? [
+    { titleSlug: parts.titleSlug ?? null, season: parts.season },
+  ];
+  for (const normalizedGroup of [parts.normalizedGroup, ...(parts.groupAliases ?? [])]) {
+    for (const { titleSlug, season } of readings) {
+      const key = releaseLookupKey({ ...parts, normalizedGroup, titleSlug, season });
+      if (key) keys.add(key);
+    }
+  }
+  return [...keys];
+}
+
 /** Stable lookup key for matching evidence. It is not a universal release identity. */
-export function releaseLookupKey(
-  parts: ReleaseSlice & { normalizedGroup: string | null },
-): string | null {
+export function releaseLookupKey(parts: ReleaseKeyParts): string | null {
   const group = parts.normalizedGroup?.trim();
   const resolution = normalizedTag(parts.resolution);
   if (!group || !resolution) return null;

@@ -2,6 +2,33 @@
 
 All notable changes to xseek match will be documented in this file.
 
+## 0.2.0 - 2026-11-23
+
+Adds an API, single sign-on and a Yata integration, and groups more copies of the same release.
+
+### API v1
+- Search your trackers and look up TV and movie titles from your own scripts and tools.
+- Named API keys with scopes and expiry, managed under **Settings → API access**. Keys are shown once and can't sign in to the app.
+- Documented with an OpenAPI 3.1 contract and a quickstart.
+
+### Single sign-on
+- Sign in with Pocket ID or any standard OpenID Connect provider.
+- Link and unlink the owner account under **Accounts → Security**. Password sign-in keeps working as a fallback.
+- Review and revoke active provider sessions.
+
+### Yata
+- See your ratio, buffer, hit and runs and promotion progress on each tracker next to its results.
+- Get warned before a grab overdraws your buffer.
+- Freeleech copies and trackers you're working towards a promotion on rank higher in a release group.
+
+### Matching
+- Re-releases group with the original year, and more anime, fansub and encoder group variants match across indexers.
+- `HDR` matches `HDR10`, `DV HDR10+` matches `DV HDR`, and HLG is now its own HDR type.
+- `H.264`/`x264` and `H.265`/`x265` count as the same encoder.
+
+### Changed
+- The screenshot fixture no longer contains real tracker names.
+
 ## 0.1.1 - 2026-10-17
 
 ### Fixed

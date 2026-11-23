@@ -77,9 +77,9 @@
   accent-color: var(--primary);
 }
 .auth-card .auth-primary {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: var(--primary-foreground);
+  background: var(--secondary);
+  border-color: var(--secondary);
+  color: var(--secondary-foreground);
   width: 100%;
   margin-top: 12px;
   padding: 13px;

@@ -35,6 +35,7 @@ const operationNames: Record<string, string> = {
   search_live: 'Search · live',
   search_cached: 'Cached search',
   qui_resolve: 'qui resolver',
+  yata_accounts: 'Yata accounts',
   lookup_failed: 'Title lookup · failed',
   resolve_failed: 'Resolver · failed',
 };

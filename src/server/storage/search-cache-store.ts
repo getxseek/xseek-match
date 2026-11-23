@@ -22,6 +22,7 @@ export interface SearchCacheKeyParams {
   searchType: string;
   query: string;
   excludedIds: Iterable<number>;
+  includedIds?: Iterable<number>;
 }
 
 export class SearchCacheStore {
@@ -38,6 +39,9 @@ export class SearchCacheStore {
           params.searchType,
           params.query.toLowerCase(),
           [...params.excludedIds].sort((left, right) => left - right),
+          ...(params.includedIds
+            ? [[...params.includedIds].sort((left, right) => left - right)]
+            : []),
         ]),
       )
       .digest('hex');

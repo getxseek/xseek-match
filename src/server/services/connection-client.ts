@@ -3,7 +3,7 @@ import type { ConnectionRecord as Connection } from '../storage/integrations-sto
 import { pinnedRequest } from './pinned-http.js';
 import { OriginPauses } from './upstream-policy.js';
 
-type ConnectionTarget = Pick<Connection, 'baseUrl' | 'apiKey'>;
+type ConnectionTarget = Pick<Connection, 'baseUrl' | 'apiKey'> & { kind?: Connection['kind'] };
 
 const DEFAULT_MAX_RESPONSE_BYTES = 1_048_576;
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -12,9 +12,14 @@ const UNEXPECTED_RESPONSE_MESSAGE = 'Unexpected response. Check the service type
 
 const pauses = new OriginPauses();
 
-function requestHeaders(apiKey: string, payload: string | undefined): Record<string, string> {
+function requestHeaders(
+  connection: ConnectionTarget,
+  payload: string | undefined,
+): Record<string, string> {
   const headers: Record<string, string> = {
-    'X-Api-Key': apiKey,
+    ...(connection.kind === 'yata'
+      ? { Authorization: `Bearer ${connection.apiKey}` }
+      : { 'X-Api-Key': connection.apiKey }),
     Accept: 'application/json',
   };
   if (payload !== undefined) {
@@ -36,7 +41,7 @@ function statusFailureMessage(statusCode: number): string {
   return 'Service returned an error. Check the base URL and URL base.';
 }
 
-/** GETs (or POSTs `body` as JSON to) a Sonarr, Radarr or qui API path and parses the JSON reply. */
+/** GETs (or POSTs `body` as JSON to) a Sonarr, Radarr, qui or Yata API path and parses the JSON reply. */
 export async function requestConnection(
   connection: ConnectionTarget,
   path: string,
@@ -49,7 +54,7 @@ export async function requestConnection(
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const response = await pinnedRequest(url, {
     method: payload ? 'POST' : 'GET',
-    headers: requestHeaders(connection.apiKey, payload),
+    headers: requestHeaders(connection, payload),
     payload,
     maxBytes,
     timeoutMs: REQUEST_TIMEOUT_MS,
@@ -76,6 +81,14 @@ function describeQuiInstances(data: unknown): string {
   return `Connected · ${data.length} client ${data.length === 1 ? 'instance' : 'instances'}`;
 }
 
+function describeYataSummary(data: any): string {
+  if (!data || typeof data.totals !== 'object' || !Array.isArray(data.trackers)) {
+    throw new Error(UNEXPECTED_RESPONSE_MESSAGE);
+  }
+  const count = data.trackers.length;
+  return `Connected · ${count} ${count === 1 ? 'tracker' : 'trackers'}`;
+}
+
 function describeArrStatus(data: any, kind: Connection['kind']): string {
   const isExpectedApp =
     data &&
@@ -92,6 +105,9 @@ export async function probeConnection(
 ): Promise<string> {
   if (connection.kind === 'qui') {
     return describeQuiInstances(await requestConnection(connection, '/api/instances'));
+  }
+  if (connection.kind === 'yata') {
+    return describeYataSummary(await requestConnection(connection, '/api/summary'));
   }
   const status = await requestConnection(connection, '/api/v3/system/status');
   return describeArrStatus(status, connection.kind);

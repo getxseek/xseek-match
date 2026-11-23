@@ -8,7 +8,7 @@ import { SwitchButton } from '../../../components/ui/switch-button';
 import { authFetch } from '../../auth/auth-client';
 import './integrations.css';
 
-type Kind = 'sonarr' | 'radarr' | 'qui';
+type Kind = 'sonarr' | 'radarr' | 'qui' | 'yata';
 
 type Connection = {
   id: string;
@@ -26,6 +26,7 @@ const SERVICE_KINDS = [
   { value: 'sonarr' as const, label: 'Sonarr' },
   { value: 'radarr' as const, label: 'Radarr' },
   { value: 'qui' as const, label: 'qui' },
+  { value: 'yata' as const, label: 'Yata' },
 ];
 
 async function requestIntegrationsApi(body?: unknown) {
@@ -44,9 +45,16 @@ async function requestIntegrationsApi(body?: unknown) {
   return data;
 }
 
+function keyPlaceholder(kind: Kind, editing: boolean): string {
+  if (editing) return 'Leave blank to keep saved key';
+  if (kind === 'yata') return 'yata_… (Yata Settings → Integrations)';
+  return 'API key';
+}
+
 function defaultPlaceholderUrl(kind: Kind): string {
   if (kind === 'sonarr') return 'http://sonarr:8989';
   if (kind === 'radarr') return 'http://radarr:7878';
+  if (kind === 'yata') return 'http://yata:8420';
   return 'http://qui:7476';
 }
 
@@ -167,7 +175,7 @@ function Editor({
         </label>
 
         <label htmlFor={`${idPrefix}-key`}>
-          API key
+          {kind === 'yata' ? 'API token' : 'API key'}
           <PasswordInput
             id={`${idPrefix}-key`}
             wrapperClassName="integration-key"
@@ -183,7 +191,7 @@ function Editor({
             required={!connection}
             disabled={busy}
             autoComplete="new-password"
-            placeholder={connection ? 'Leave blank to keep saved key' : 'API key'}
+            placeholder={keyPlaceholder(kind, Boolean(connection))}
             spellCheck={false}
           />
         </label>
@@ -337,6 +345,53 @@ function RemoveConfirmation({
     document.body,
   );
 }
+
+/** Lists the Yata trackers that have no matching Prowlarr indexer, so gaps are visible. */
+function YataCoverage({ connection }: { connection: Connection }) {
+  const [coverage, setCoverage] = useState<{
+    matched: number;
+    unmatched: string[];
+    failed: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void requestIntegrationsApi({ action: 'accounts' })
+      .then(
+        (data: {
+          accounts: { connection: string }[];
+          unmatched: Unmatched[];
+          failed: string[];
+        }) => {
+          if (!active) return;
+          setCoverage({
+            failed: data.failed.includes(connection.name),
+            matched: data.accounts.filter((row) => row.connection === connection.name).length,
+            unmatched: data.unmatched
+              .filter((row) => row.connection === connection.name)
+              .map((row) => row.name),
+          });
+        },
+      )
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [connection.name, connection.checkedAt]);
+
+  if (!coverage) return null;
+  if (coverage.failed)
+    return <small>Yata didn't answer. Account details are hidden until it does.</small>;
+  return (
+    <small>
+      {coverage.matched} {coverage.matched === 1 ? 'indexer' : 'indexers'} matched.
+      {coverage.unmatched.length > 0 &&
+        ` No Prowlarr indexer shares a site address with ${coverage.unmatched.join(', ')}.`}
+    </small>
+  );
+}
+
+type Unmatched = { connection: string; name: string };
 
 const MIN_TEST_SPIN_MS = 500;
 const TEST_RESULT_MS = 2000;
@@ -520,7 +575,7 @@ export function IntegrationsPanel() {
     <SettingsSection
       className={`integrations-panel ${pending !== null ? 'integration-operation-pending' : ''}`}
       title="Integrations"
-      help="Add named Sonarr, Radarr or qui instances. Test & save checks read-only API access before saving. Keys stay in server-side SQLite and are never returned after saving. Back up the database as sensitive data."
+      help="Add named Sonarr, Radarr, qui or Yata instances. Test & save checks read-only API access before saving. Keys stay in server-side SQLite and are never returned after saving. Back up the database as sensitive data."
       actions={
         <Button
           size="sm"
@@ -607,6 +662,9 @@ export function IntegrationsPanel() {
                       />
                     </strong>
                     <span>{connection.baseUrl}</span>
+                    {connection.kind === 'yata' && connection.enabled && (
+                      <YataCoverage connection={connection} />
+                    )}
                   </div>
 
                   <div className="integration-row-actions">
@@ -675,7 +733,7 @@ export function IntegrationsPanel() {
           <Plug size={24} />
           <p>No optional integrations yet.</p>
           <Button size="sm" variant="ghost" onClick={() => setEditor('new')}>
-            Add Sonarr, Radarr or qui <Plus size={14} />
+            Add Sonarr, Radarr, qui or Yata <Plus size={14} />
           </Button>
         </div>
       )}

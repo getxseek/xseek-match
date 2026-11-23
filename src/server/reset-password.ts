@@ -50,7 +50,11 @@ async function readPasswordFromStdinOrPrompt(): Promise<string> {
   }
 }
 
-const auth = new Auth(process.env, resolve(process.env.DATA_DIR || '.local'));
+// Recovery must work even when provider configuration is invalid or the provider is offline.
+const auth = new Auth(
+  { ...process.env, OIDC_ENABLED: 'false' },
+  resolve(process.env.DATA_DIR || '.local'),
+);
 try {
   if (!auth.owner()) {
     throw new Error('No owner exists. Complete first-run setup instead.');

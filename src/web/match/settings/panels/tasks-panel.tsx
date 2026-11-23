@@ -1,4 +1,3 @@
-import { LoaderCircle, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '../../../components/ui/button';
 import { SettingsHelp } from '../../../components/ui/settings-help';
@@ -46,12 +45,7 @@ export function TasksPanel({ onSync }: { onSync: () => void }) {
               your local selections and custom names. Does not crawl releases or edit Prowlarr.
             </SettingsHelp>
           </h3>
-          <Button size="sm" disabled={running} onClick={() => void load(true)}>
-            {running ? (
-              <LoaderCircle size={13} className="search-spinner" />
-            ) : (
-              <RefreshCw size={13} />
-            )}{' '}
+          <Button variant="secondary" size="sm" disabled={running} onClick={() => void load(true)}>
             {running ? 'Syncing…' : 'Run now'}
           </Button>
         </div>

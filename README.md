@@ -10,12 +10,15 @@ Find the same release across all your trackers, compatible with the Prowlarr you
 
 ---
 
-xseek match searches your Prowlarr indexers all at once, groups matching releases together, with integrations for Sonarr, Radarr, and qui.
+xseek match searches your Prowlarr indexers all at once, groups matching releases together, with integrations for Sonarr, Radarr, qui and Yata.
 
 - **Release matching**: Instead of relying on exact release names, results are matched by their parsed metadata, even if a tracker renames an upload.
 - **Preferred grabs**: Got a favourite tracker, one you're working towards or one with better bonuses, set it as a favourite.
 - **Sonarr & Radarr integration**: Pulls title aliases and scene numbering directly from your *arr instances to broaden search coverage.
+- **Yata integration**: See your ratio and buffer on each tracker next to its results, get warned before a grab overdraws your buffer, and get pointed at the freeleech copy or the tracker you're working towards a promotion on.
 - **qui integration**: Connect your `qui` instance to highlight releases you already have in your client, never duplicate grab again!
+- **API**: Search your trackers and look up titles from your own scripts and tools, with scoped keys you can revoke at any time.
+- **Single sign-on**: Sign in with Pocket ID or any standard OpenID Connect provider. Your password keeps working as a fallback.
 - **Search history and stats**: Saves and heavily caches your searches to improve your search experience, with stats on content overlap across your trackers.
 
 ![xseek match search results](docs/assets/screenshot-hero.png)
@@ -136,23 +139,27 @@ All settings are environment variables, read at startup. Restart after changing 
 | `PORT` | `5178` | Port to listen on |
 | `HOST` | `0.0.0.0` | Listen address; `127.0.0.1` keeps it local |
 | `DATA_DIR` | `/data` in Docker, `.local` natively | Database and caches |
+| `API_V1_ENABLED` | `true` | Set to `false` to turn off the API |
 
 Everything else (integrations, important trackers, matching rules, cache lifetime, accent color) lives in the app under **Settings**.
 
 ## Integrations
 
-Add Sonarr, Radarr and qui under **Settings → Integrations**. You can add several of each.
+Add Sonarr, Radarr, qui and Yata under **Settings → Integrations**. You can add several of each.
 
 | Service | What xseek match uses it for |
 | --- | --- |
 | Sonarr / Radarr | Title suggestions, posters and aliases for *Enrich* |
 | qui | Marking results you already have in your torrent client |
+| Yata | Your ratio, buffer, hit and runs and promotion progress on each tracker |
 
 These are read-only calls. API keys stay on the server and are never sent back to the browser. They're stored unencrypted in the database, so treat the data volume and its backups like credentials.
 
 ## Accounts and passwords
 
 There's a single owner account. Change your password or sign out under **Settings → Accounts**.
+
+You can also sign in with Pocket ID or another standard OpenID Connect provider. It needs an HTTPS `APP_ORIGIN`. Set it up with the `OIDC_*` variables in `.env.example`, then link the owner under **Accounts → Security**. See [OIDC configuration, sessions and recovery](docs/oidc.md).
 
 Forgot it? Reset it directly from the console:
 
@@ -220,11 +227,17 @@ npm run check           # Runs core checks followed by browser tests
 </details>
 
 
+## API v1
+
+Search your trackers and look up titles from your own scripts and tools. Create a scoped key under **Settings → API access**. Keys can't sign in to the app or touch your settings, and you can revoke them at any time.
+
+See the [quickstart and limits](docs/api/README.md) and the [OpenAPI 3.1 contract](docs/api/openapi.yaml).
+
 ## Security
 
 xseek match is built for personal use.
 
-- Passwords use Argon2id. Sessions are HttpOnly, SameSite=Strict cookies, and writes checks the origin and a CSRF token.
+- Passwords use Argon2id. Sessions are HttpOnly, SameSite=Strict cookies, and writes check the origin and a CSRF token.
 - The container runs as a non-root user on a read-only filesystem with all capabilities dropped.
 - Outgoing requests to your services pin DNS, keep TLS verification on, refuse redirects and block cloud metadata addresses.
 

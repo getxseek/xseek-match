@@ -1,5 +1,5 @@
 /**
- * Release-name parser types — derived from detect-core v4 (detect-core:9bd5477) and
+ * Release-name parser types — derived from detect-core v5 (detect-core:7a89b3e) and
  * trimmed to the fields consumed by xseek-match.
  */
 import type { ReleaseTreatment } from './vocabulary.js';
@@ -24,10 +24,17 @@ export type ParsedRelease = {
   packKind: PackKind;
   /** Split-season part (`S01 Part 2`); Part 1 and Part 2 are different packs. Null when unstated. */
   part?: number | null;
+  /**
+   * Season named by a Roman numeral ending the title (`Show.XI.S11`, `[Group] Show II [Batch]`).
+   * Never written into `season`: `Show II` may be the whole title. Null when there is none.
+   */
+  seasonNumeral: number | null;
 
   // Identity / matching
   group: string | null; // extracted group (un-normalized)
   normalizedGroup: string | null;
+  /** Release collective in `(… - Wren) [Lattice]`, kept apart from the encoder group. Null otherwise. */
+  collective: string | null;
 
   // Product slice tags
   source: string | null; // WEB-DL, BluRay, HDTV, ...

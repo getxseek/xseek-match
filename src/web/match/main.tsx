@@ -1,3 +1,4 @@
+import { ApiAccessPanel } from './settings/panels/api-access-panel';
 import {
   ArrowLeft,
   ArrowUp,
@@ -52,6 +53,7 @@ import { useQuiPresence } from './results/qui';
 import { IndexerIcon } from './results/result-presenters';
 import './results/result-presenters.css';
 import { ResultsView } from './results/results';
+import { useTrackerAccounts } from './results/accounts';
 import {
   matchesSearchResultFilters,
   SearchFilterPopover,
@@ -81,6 +83,7 @@ type SettingsCategory =
   | 'logs'
   | 'matching'
   | 'tasks'
+  | 'api-access'
   | 'account'
   | 'integrations'
   | 'statistics'
@@ -97,6 +100,7 @@ const SETTINGS_NAV_ITEMS = [
   { key: 'cache', label: 'Search Cache', icon: Layers },
   { key: 'statistics', label: 'Statistics', icon: Layers },
   { key: 'tasks', label: 'Tasks', icon: RefreshCw },
+  { key: 'api-access', label: 'API access', icon: UserRound },
   { key: 'account', label: 'Accounts', icon: UserRound },
   { key: 'logs', label: 'Logs', icon: ScrollText },
 ] as const;
@@ -427,7 +431,20 @@ function App() {
     } catch {}
   }
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => {
+    try {
+      return sessionStorage.getItem('match-query-draft') || '';
+    } catch {
+      return '';
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('match-query-draft', query);
+    } catch {
+      /* Storage can be disabled. */
+    }
+  }, [query]);
   const [lastSearch, setLastSearch] = useState<{
     term: string;
     title: string;
@@ -437,6 +454,7 @@ function App() {
   } | null>(null);
   const [results, setResults] = useState<Result[] | null>(null);
   const quiState = useQuiPresence(results, lastSearch?.term || '');
+  const accounts = useTrackerAccounts(refreshKey);
   const quiPresence = quiState.matches;
   const [quiOnly, setQuiOnly] = useState(false);
   useEffect(() => setQuiOnly(false), [results]);
@@ -718,6 +736,7 @@ function App() {
       return <StatisticsPanel icons={icons} abbreviations={abbreviations} />;
     }
     if (settingsCategory === 'integrations') return <IntegrationsPanel />;
+    if (settingsCategory === 'api-access') return <ApiAccessPanel />;
     if (settingsCategory === 'account') return <AccountPanel />;
     if (settingsCategory === 'tasks') {
       return <TasksPanel onSync={() => setRefreshKey((key) => key + 1)} />;
@@ -743,6 +762,7 @@ function App() {
         onRenameTracker={renameTracker}
         onToggleImportant={toggleImportantTracker}
         onToggleTracker={toggleTracker}
+        accounts={accounts}
       />
     );
   }
@@ -1055,6 +1075,7 @@ function App() {
             allowedResults={allowedResults}
             matching={matching}
             lastSearch={lastSearch}
+            accounts={accounts}
           />
         </main>
       )}

@@ -1,9 +1,17 @@
 /**
  * Cross-tracker release grouping and variant compatibility — derived from
- * xseek release-fingerprint (xseek:78f9e8b) and detect-core v4 product-slice (detect-core:9bd5477).
+ * xseek release-fingerprint (xseek:78f9e8b), detect-core v4 product-slice (detect-core:9bd5477)
+ * and detect-core v5 release-pair (detect-core:e81fe71).
  */
 import { parseReleaseName } from '../../parser/parse-release-name.js';
-import { releaseLookupKey } from './release-key.js';
+import { releaseLookupKeys } from './release-key.js';
+import {
+  groupAliases,
+  hdrCompatible,
+  releaseGroupsMatch,
+  titleReadings,
+  type GroupFields,
+} from './release-pair.js';
 import { normalizeInfoHash } from './info-hash.js';
 import type { Result } from '../../contracts/search.js';
 
@@ -11,7 +19,7 @@ export type { Result } from '../../contracts/search.js';
 
 type Parsed = ReturnType<typeof parseReleaseName>;
 type Evidence = 'hash' | 'release' | 'release_size_off';
-type Candidate = { row: Result; parsed: Parsed; key: string | null };
+type Candidate = { row: Result; parsed: Parsed; group: GroupFields; keys: string[] };
 
 export type ResultGroup = {
   representative: Parsed;
@@ -66,15 +74,25 @@ function hasSameVariantFlags(left: Parsed, right: Parsed): boolean {
     left.packKind === right.packKind &&
     left.flags.repack === right.flags.repack &&
     left.flags.proper === right.flags.proper &&
-    left.hdrDv === right.hdrDv &&
+    hdrCompatible(left, right) &&
     (left.treatment ?? null) === (right.treatment ?? null)
   );
+}
+
+function areEncodersCompatible(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  if (!left || !right || left === right) return true;
+  if ((left === 'H264' && right === 'X264') || (left === 'X264' && right === 'H264')) return true;
+  if ((left === 'H265' && right === 'X265') || (left === 'X265' && right === 'H265')) return true;
+  return false;
 }
 
 function hasCompatibleSourceAndCodec(left: Parsed, right: Parsed): boolean {
   return (
     areOptionalTagsCompatible(left.source, right.source) &&
-    areOptionalTagsCompatible(left.encoder, right.encoder) &&
+    areEncodersCompatible(left.encoder, right.encoder) &&
     areOptionalTagsCompatible(left.webProvider, right.webProvider) &&
     areOptionalTagsCompatible(left.webDelivery, right.webDelivery)
   );
@@ -94,7 +112,8 @@ function compareCandidates(
   const rightHash = normalizeInfoHash(right.row.infoHash);
   if (leftHash && rightHash && leftHash === rightHash) return 'hash';
 
-  if (!left.key || left.key !== right.key) return null;
+  if (!left.keys.some((key) => right.keys.includes(key))) return null;
+  if (!releaseGroupsMatch(left.group, right.group)) return null;
 
   // Lookup keys are candidate buckets, not proof. Retain variant guards.
   if (!hasSameVariantFlags(left.parsed, right.parsed)) return null;
@@ -144,12 +163,23 @@ export function groupResults(
     seen.add(identity);
 
     const parsed = parsedByRow?.get(row) ?? parseReleaseName(row.title);
-    const candidate: Candidate = { row, parsed, key: releaseLookupKey(parsed) };
+    const group: GroupFields = {
+      rawName: row.title,
+      group: parsed.group,
+      normalizedGroup: parsed.normalizedGroup,
+      collective: parsed.collective,
+    };
+    const keys = releaseLookupKeys({
+      ...parsed,
+      groupAliases: groupAliases(group),
+      titleReadings: titleReadings(parsed),
+    });
+    const candidate: Candidate = { row, parsed, group, keys };
     const infoHash = normalizeInfoHash(row.infoHash);
 
     const bucketKeys = [
       ...(infoHash ? [`hash:${infoHash}`] : []),
-      ...(candidate.key ? [`release:${candidate.key}`] : []),
+      ...candidate.keys.map((key) => `release:${key}`),
     ];
     const candidateGroupIndices = new Set(
       bucketKeys.flatMap((key) => [...(buckets.get(key) ?? [])]),

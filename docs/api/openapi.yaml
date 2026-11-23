@@ -1,0 +1,849 @@
+openapi: 3.1.0
+info:
+  title: xseek match API
+  version: 1.0.0
+  description: Single-owner, opaque scoped bearer keys. Additive optional response fields are permitted;
+    ignore unknown fields and conservatively handle unknown error/warning codes. No OAuth token acceptance.
+    All timestamps are Unix milliseconds.
+servers:
+- url: /api/v1
+security:
+- ApiKey: []
+paths:
+  /capabilities:
+    get:
+      operationId: capabilities
+      summary: Discover API support
+      description: Any valid key. No cookie fallback. See README for limits, unknown completeness and
+        lifecycle.
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      version:
+                        const: '1'
+                      operations:
+                        type: array
+                        items:
+                          type: string
+                      searchAvailable:
+                        type: boolean
+                      titleLookup:
+                        type: object
+                        properties:
+                          tv:
+                            type: boolean
+                          movie:
+                            type: boolean
+                        required:
+                        - tv
+                        - movie
+                      limits:
+                        type: object
+                        properties:
+                          bodyBytes:
+                            type: integer
+                          searchResults:
+                            type: integer
+                          lookupResults:
+                            type: integer
+                          requestsPerMinute:
+                            type: integer
+                          liveSearchAttemptsPerMinute:
+                            type: integer
+                          liveSearchConcurrency:
+                            type: integer
+                          deadlineSeconds:
+                            type: integer
+                        required: []
+                    required:
+                    - version
+                    - operations
+                    - searchAvailable
+                    - titleLookup
+                    - limits
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - data
+                - meta
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/BodyTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/DeadlineExceeded'
+  /me:
+    get:
+      operationId: me
+      summary: Inspect the current credential
+      description: Any valid key. No cookie fallback. See README for limits, unknown completeness and
+        lifecycle.
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Key'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - data
+                - meta
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/BodyTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/DeadlineExceeded'
+  /indexers:
+    get:
+      operationId: indexers
+      summary: Discover enabled searchable torrent indexers
+      description: 'Required scope: indexers:read. No cookie fallback. See README for limits, unknown
+        completeness and lifecycle.'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      indexers:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Indexer'
+                    required:
+                    - indexers
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - data
+                - meta
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/BodyTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/DeadlineExceeded'
+  /titles/lookup:
+    post:
+      operationId: titles_lookup
+      summary: Resolve TV/movie titles
+      description: 'Required scope: titles:read. No cookie fallback. See README for limits, unknown completeness
+        and lifecycle.'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      matches:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Title'
+                    required:
+                    - matches
+                  meta:
+                    $ref: '#/components/schemas/LookupMeta'
+                required:
+                - data
+                - meta
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/BodyTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/DeadlineExceeded'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LookupRequest'
+            example:
+              query: Example Show
+              mediaType: tv
+              limit: 10
+  /search:
+    post:
+      operationId: search
+      summary: Search a bounded release snapshot
+      description: 'Required scope: search:read. No cookie fallback. See README for limits, unknown completeness
+        and lifecycle.'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Release'
+                    required:
+                    - results
+                  meta:
+                    $ref: '#/components/schemas/SearchMeta'
+                required:
+                - data
+                - meta
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/BodyTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamFailed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/DeadlineExceeded'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+            example:
+              query: Example Show
+              limit: 100
+components:
+  securitySchemes:
+    ApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: xm_live_<24 hex ID>.<256-bit secret>
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+              format: uuid
+            retryAfterSeconds:
+              type: integer
+              minimum: 1
+          required:
+          - code
+          - message
+          - requestId
+      required:
+      - error
+    Meta:
+      type: object
+      properties:
+        requestId:
+          type: string
+          format: uuid
+      required:
+      - requestId
+    Key:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        prefix:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - search:read
+            - titles:read
+            - indexers:read
+          minItems: 1
+          uniqueItems: true
+        createdAt:
+          type: integer
+        expiresAt:
+          type:
+          - integer
+          - 'null'
+        lastUsedAt:
+          type:
+          - integer
+          - 'null'
+        revokedAt:
+          type:
+          - integer
+          - 'null'
+      required:
+      - id
+      - name
+      - prefix
+      - scopes
+      - createdAt
+      - expiresAt
+      - lastUsedAt
+      - revokedAt
+    Indexer:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        name:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+        available:
+          type: boolean
+      required:
+      - id
+      - name
+      - categories
+      - available
+    Warning:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
+    Title:
+      type: object
+      properties:
+        mediaType:
+          type: string
+          enum:
+          - tv
+          - movie
+        ids:
+          oneOf:
+          - type: object
+            properties:
+              tvdb:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              imdb:
+                type: string
+                pattern: ^tt[0-9]{1,12}$
+            required:
+            - tvdb
+            additionalProperties: false
+          - type: object
+            properties:
+              tmdb:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              imdb:
+                type: string
+                pattern: ^tt[0-9]{1,12}$
+            required:
+            - tmdb
+            additionalProperties: false
+        title:
+          type: string
+        year:
+          type:
+          - integer
+          - 'null'
+        aliases:
+          type: array
+          items:
+            type: string
+        originalTitle:
+          type: string
+        artwork:
+          type: string
+          format: uri
+      required:
+      - mediaType
+      - ids
+      - title
+      - year
+      - aliases
+    Selection:
+      oneOf:
+      - type: object
+        properties:
+          mediaType:
+            const: tv
+          ids:
+            type: object
+            properties:
+              tvdb:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              imdb:
+                type: string
+                pattern: ^tt[0-9]{1,12}$
+            required:
+            - tvdb
+            additionalProperties: false
+          season:
+            type: integer
+            minimum: 0
+            maximum: 999
+          episode:
+            type: integer
+            minimum: 0
+            maximum: 999
+        required:
+        - mediaType
+        - ids
+        additionalProperties: false
+        dependentRequired:
+          episode:
+          - season
+      - type: object
+        properties:
+          mediaType:
+            const: movie
+          ids:
+            type: object
+            properties:
+              tmdb:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              imdb:
+                type: string
+                pattern: ^tt[0-9]{1,12}$
+            required:
+            - tmdb
+            additionalProperties: false
+        required:
+        - mediaType
+        - ids
+        additionalProperties: false
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 2
+          maxLength: 200
+        selection:
+          $ref: '#/components/schemas/Selection'
+        numbering:
+          type: string
+          enum:
+          - tvdb
+          - release
+          default: tvdb
+          description: release requires a TV selection; numeric query suffix must match explicit season/episode.
+        indexerIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+          minItems: 1
+          maxItems: 100
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 100
+      required:
+      - query
+      additionalProperties: false
+    LookupRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 2
+          maxLength: 200
+        mediaType:
+          type: string
+          enum:
+          - tv
+          - movie
+          - all
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 10
+      required:
+      - query
+      - mediaType
+      additionalProperties: false
+    Release:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        indexerId:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        indexer:
+          type: string
+        size:
+          type: number
+          exclusiveMinimum: 0
+        seeders:
+          type: integer
+          minimum: 0
+        infoHash:
+          type: string
+        infoUrl:
+          type: string
+          format: uri
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+            required:
+            - id
+            - name
+        indexerFlags:
+          type: array
+          items:
+            type: string
+      required:
+      - id
+      - title
+      - indexerId
+      - indexer
+    SearchMeta:
+      type: object
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        retrievedAt:
+          type: integer
+        cached:
+          type: boolean
+        cacheAgeMs:
+          type: integer
+          minimum: 0
+        effectiveQuery:
+          type: string
+        searchMode:
+          type: string
+          enum:
+          - search
+          - tvsearch
+          - movie
+        numbering:
+          type: string
+          enum:
+          - tvdb
+          - release
+        textFallback:
+          type:
+          - boolean
+          - 'null'
+          description: null when not retained by existing disk cache.
+        completeness:
+          const: unknown
+        truncated:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Warning'
+      required:
+      - requestId
+      - retrievedAt
+      - cached
+      - cacheAgeMs
+      - effectiveQuery
+      - searchMode
+      - numbering
+      - textFallback
+      - completeness
+      - truncated
+      - warnings
+    LookupMeta:
+      type: object
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        cached:
+          type: boolean
+        enrichmentPending:
+          type: boolean
+        truncated:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Warning'
+      required:
+      - requestId
+      - cached
+      - enrichmentPending
+      - truncated
+      - warnings
+  responses:
+    BadRequest:
+      description: Invalid request
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing/invalid/expired/revoked key; Bearer challenge
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+        WWW-Authenticate:
+          schema:
+            type: string
+          description: Present on 401.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient scope or unsupported browser origin
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Unknown endpoint
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    MethodNotAllowed:
+      description: Method not allowed; Allow header
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+        Allow:
+          schema:
+            type: string
+          description: Present on 405.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BodyTooLarge:
+      description: Body exceeds 16 KiB
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnsupportedMediaType:
+      description: application/json required
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Budget/concurrency/upstream pause; obey Retry-After
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+        Retry-After:
+          schema:
+            type: integer
+          description: Present on 429, seconds.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UpstreamFailed:
+      description: Upstream failed or invalid
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unavailable:
+      description: Dependency unavailable or API disabled
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    DeadlineExceeded:
+      description: Search exceeded deadline
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
