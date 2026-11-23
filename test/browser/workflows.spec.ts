@@ -735,3 +735,96 @@ test('integration test buttons spin, then show the result', async ({ page }) => 
   await expect(button).toContainText('Connection works');
   await expect(button).toHaveAttribute('data-result', 'idle', { timeout: 4000 });
 });
+
+test('API access creates a scoped show-once key, hides it after navigation, and revokes it', async ({
+  page,
+}) => {
+  await fixture(page);
+  const key = {
+    id: '1'.repeat(24),
+    name: 'Consumer',
+    prefix: 'xm_live_' + '1'.repeat(24),
+    scopes: ['search:read', 'titles:read'],
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 86400000,
+    lastUsedAt: null,
+    revokedAt: null as number | null,
+  };
+  let created = false;
+  await page.route('**/api/auth/keys', async (route) => {
+    if (route.request().method() === 'GET')
+      return route.fulfill({ json: { keys: created ? [key] : [] } });
+    const input = route.request().postDataJSON();
+    expect(input.password).toBe('fixture-password');
+    if (input.action === 'create') {
+      expect(input.scopes).toEqual(['search:read', 'titles:read']);
+      created = true;
+      return route.fulfill({ status: 201, json: { key, token: 'xm_live_FIXTURE_SHOWN_ONCE' } });
+    }
+    key.revokedAt = Date.now();
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'API access', exact: true }).click();
+  await page.getByLabel('Key name', { exact: true }).fill('Consumer');
+  await page
+    .getByLabel('Current password for key changes', { exact: true })
+    .fill('fixture-password');
+  await page.getByRole('button', { name: 'Create key', exact: true }).click();
+  await expect(page.getByLabel('New API key (shown once)', { exact: true })).toHaveValue(
+    'xm_live_FIXTURE_SHOWN_ONCE',
+  );
+  const violations = await new AxeBuilder({ page }).include('main').analyze();
+  expect(violations.violations).toEqual([]);
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'API access', exact: true }).click();
+  await expect(page.getByLabel('New API key (shown once)', { exact: true })).toHaveCount(0);
+  await page
+    .getByLabel('Current password for key changes', { exact: true })
+    .fill('fixture-password');
+  await page.getByRole('button', { name: 'Revoke Consumer', exact: true }).click();
+  await expect(page.getByText('Key access revoked.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Revoke Consumer', exact: true })).toHaveCount(0);
+});
+
+test('API key password errors stay beside the field and a corrected password recovers', async ({
+  page,
+}) => {
+  const { errors } = await fixture(page);
+  await page.route('**/api/auth/keys', async (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { keys: [] } });
+    const input = route.request().postDataJSON();
+    if (input.password !== 'fixture-password')
+      return route.fulfill({
+        status: 401,
+        json: { error: 'Verify your current password to manage API keys.' },
+      });
+    return route.fulfill({ status: 201, json: { key: {}, token: 'xm_live_FIXTURE_SHOWN_ONCE' } });
+  });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'API access', exact: true }).click();
+  await page.getByLabel('Key name', { exact: true }).fill('Consumer');
+  const password = page.getByLabel('Current password for key changes', { exact: true });
+  await password.fill('incorrect');
+  await page.getByRole('button', { name: 'Create key', exact: true }).click();
+  await expect(password).toHaveAttribute('aria-invalid', 'true');
+  await expect(password).toHaveAttribute('aria-describedby', 'api-key-password-error');
+  await expect(page.locator('#api-key-password-error')).toContainText(
+    'Verify your current password',
+  );
+  await expect(page.getByLabel('New API key (shown once)', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Create key', exact: true })).toHaveClass(
+    /bg-secondary/,
+  );
+  const audit = await new AxeBuilder({ page }).include('main').analyze();
+  expect(audit.violations).toEqual([]);
+  await password.fill('fixture-password');
+  await expect(password).toHaveAttribute('aria-invalid', 'false');
+  await expect(page.locator('#api-key-password-error')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Create key', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Key created.');
+  await expect(page.getByRole('button', { name: 'Test key', exact: true })).toHaveClass(
+    /hover:bg-accent/,
+  );
+  expect(errors).toEqual([]);
+});

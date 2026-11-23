@@ -91,6 +91,7 @@ export function createApp(
     try {
       setBaselineSecurityHeaders(res);
       const url = new URL(req.url || '/', 'http://localhost');
+      const isApiV1 = url.pathname === '/api/v1' || url.pathname.startsWith('/api/v1/');
 
       if (url.pathname === '/healthz' && req.method === 'GET') {
         res.setHeader('Content-Type', 'application/json');
@@ -103,13 +104,14 @@ export function createApp(
       res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
 
       const isReadMethod = ['GET', 'HEAD'].includes(req.method || '');
-      if (!isReadMethod && !isSameOriginRequest(req, env)) {
+      if (!isApiV1 && !isReadMethod && !isSameOriginRequest(req, env)) {
         res.statusCode = 403;
         res.end('Forbidden origin');
         return;
       }
 
-      const routeHandler = routes.get(url.pathname);
+      const routeHandler =
+        routes.get(url.pathname) ?? (isApiV1 ? routes.get('/api/v1') : undefined);
       if (routeHandler) {
         req.url = url.search || '/';
         await routeHandler(req, res);

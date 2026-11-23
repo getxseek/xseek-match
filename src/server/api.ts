@@ -1,3 +1,7 @@
+import { openDatabase } from './storage/migrations.js';
+import { ApiKeys } from './services/api-key-service.js';
+import { SearchService } from './services/search-service.js';
+import { registerApiV1Routes } from './routes/api-v1-routes.js';
 import { join } from 'node:path';
 import type { Router } from './routes/router.js';
 import { PreferencesStore } from './storage/preferences-store.js';
@@ -123,7 +127,7 @@ export function installApi(
     cacheDir,
   });
 
-  registerSearchRoute(router, {
+  const searchOptions = {
     env,
     prowlarrBaseUrl: prowlarrUrl,
     cacheStore,
@@ -135,6 +139,18 @@ export function installApi(
     cacheReady,
     isClosing: () => closing,
     activeSearches,
+  };
+  const searchService = new SearchService(searchOptions);
+  registerSearchRoute(router, searchOptions, searchService);
+  const keyDb = openDatabase(sqlitePath);
+  registerApiV1Routes(router, {
+    keys: new ApiKeys(keyDb),
+    logger,
+    search: searchService,
+    integrations,
+    prowlarr: prowlarrService,
+    configured: !!(prowlarrUrl && env.PROWLARR_API_KEY),
+    enabled: env.API_V1_ENABLED !== 'false',
   });
 
   let closeFlight: Promise<void> | undefined;
@@ -150,6 +166,7 @@ export function installApi(
         searchCache.settled(),
         prowlarrService.close(),
       ]);
+      keyDb.close();
       statistics.close();
       preferences.close();
     })());

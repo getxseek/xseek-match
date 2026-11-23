@@ -26,4 +26,12 @@ TLS termination and HSTS are expected to be handled at the HTTPS reverse proxy. 
 
 If you discover a security vulnerability in xseek match, please report it privately through [GitHub Private Vulnerability Reporting](https://github.com/getxseek/xseek-match/security/advisories/new) rather than opening a public issue.
 
-Never include credentials, setup links, session cookies, database files, or unredacted service logs in public discussions. If credentials are exposed, rotate API keys upstream and reset the owner password using the administrative CLI.
+Never include credentials, setup links, session cookies, database files, or unredacted service logs in public discussions. If credentials are exposed, rotate any exposed Prowlarr API key through Prowlarr and reset the owner password using the administrative CLI.
+
+## Machine API v1
+
+API v1 requires an opaque bearer key, with no browser-cookie fallback. Keys contain 256 random secret bits and only SHA-256 digests are stored in the additive `api_keys` table. Keys have explicit search/title/indexer scopes and cannot authenticate internal browser, account or integration routes. Owner key changes require session, origin, CSRF and current-password verification. Lifecycle audit events are non-secret, bounded to 1,000 events and pruned after 30 days on startup/activity; last-used writes are throttled to one minute.
+
+Rotate by creating and testing a replacement, then explicitly revoking the old key. Expiry/revocation stops subsequent requests immediately; running requests can finish. Browser logout, password changes, OIDC unlinking and session revocation do not revoke API keys: use the separate revoke-all-keys control during compromise recovery. `API_V1_ENABLED=false` disables machine access after restart without deleting records.
+
+External DTOs omit source integration names/URLs, library presence, download links and credentials. Release identity is opaque; optional details URLs use the shared query sanitizer plus a strict path allowlist. Bounded JSON/results, per-key request/search-attempt budgets and a shared single live-search slot limit work. These admission budgets are process-local: multiple replicas are unsupported until coordination is added. Query text and bearer tokens are excluded from API access diagnostics. See [API operating limits](api/README.md) for the contract and limitations.

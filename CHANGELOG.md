@@ -2,6 +2,18 @@
 
 All notable changes to xseek match will be documented in this file.
 
+## Unreleased
+
+- Prevent a search cancelled during cache lookup from starting upstream work or producing an unhandled rejection. Covered by a disconnect regression.
+
+### API v1
+- Make API key creation and saved-key details easier to scan, with aligned scopes, quiet action toolbars, green success states, and password errors beside the field.
+- Return the standard API error response for the bare `/api/v1` root as well as versioned subpaths.
+- Add bearer-only search, TV/movie title lookup, capability/indexer discovery and credential inspection with a documented OpenAPI 3.1 contract and consumer examples.
+- Add named SHA-256-digested scoped keys, expiry, explicit replacement/revocation, bounded security events, and password-confirmed Settings > API access management. Credentials are shown once and cannot authorize internal browser/admin routes.
+- Share search cache, upstream pauses, deadline and one live admission slot across UI/API; coalesce identical work with independent waiter cancellation, bounded responses and per-key budgets.
+- Preserve browser session origin/CSRF checks; return stable API errors/request IDs and secret-free external DTOs with explicit unknown completeness.
+
 ## 0.1.1 - 2026-10-17
 
 ### Fixed

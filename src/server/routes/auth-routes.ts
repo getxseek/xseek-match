@@ -1,3 +1,4 @@
+import { ApiKeys } from '../services/api-key-service.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readJsonObjectBody, sendJson } from '../lib/http-utils.js';
 import type { Auth, Session } from '../services/auth-service.js';
@@ -23,6 +24,8 @@ type SignedInRoute = (
   res: ServerResponse,
   session: Session,
 ) => Promise<void> | void;
+
+class OwnerAuthorizationChanged extends Error {}
 
 const MAX_AUTH_BODY_BYTES = 8_192;
 const ATTEMPT_COOLDOWN_SECONDS = '900';
@@ -93,6 +96,7 @@ async function throttled(
 }
 
 export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHandler {
+  const keys = new ApiKeys(auth.db);
   const currentSession = (req: IncomingMessage) =>
     auth.findSession(sessionToken(req, auth.cookieName));
 
@@ -157,6 +161,41 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
     };
 
   const signedInRoutes: Record<string, SignedInRoute> = {
+    'GET /api/auth/keys': (_req, res) => sendJson(res, 200, { keys: keys.list() }),
+    'POST /api/auth/keys': (req, res) =>
+      throttled(auth, req, res, async () => {
+        const input = await readBody(req);
+        const verified = await auth.verifyLogin({
+          username: auth.owner()?.username,
+          password: input.password,
+        });
+        if (!verified || verified !== auth.owner()?.password || !currentSession(req)) {
+          auth.recordFailedAttempt(clientKey(req));
+          sendJson(res, 401, { error: 'Verify your current password to manage API keys.' });
+          return;
+        }
+        const verifyCurrentOwner = () => {
+          // Recheck after password verification inside the protected key-write transaction.
+          if (verified !== auth.owner()?.password || !currentSession(req)) {
+            throw new OwnerAuthorizationChanged('Credentials changed. Sign in again.');
+          }
+        };
+        try {
+          if (input.action === 'revoke') {
+            keys.revoke(input.id, verifyCurrentOwner);
+            sendJson(res, 200, { ok: true });
+          } else if (input.action === 'revoke-all') {
+            keys.revokeAll(verifyCurrentOwner);
+            sendJson(res, 200, { ok: true });
+          } else if (input.action === 'create')
+            sendJson(res, 201, keys.create(input, verifyCurrentOwner));
+          else sendJson(res, 400, { error: 'Choose a key action.' });
+        } catch (error) {
+          sendJson(res, error instanceof OwnerAuthorizationChanged ? 401 : 400, {
+            error: error instanceof Error ? error.message : 'Could not manage API keys.',
+          });
+        }
+      }),
     'POST /api/auth/logout': (_req, res, session) => {
       auth.endSession(session);
       setSessionCookie(res, auth, '', 0);
@@ -191,6 +230,12 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
   return async (req, res, path) => {
     res.setHeader('Cache-Control', 'no-store');
     const routeKey = `${req.method} ${path}`;
+    // Machine API performs its own bearer authentication, never a cookie fallback.
+    if (path === '/api/v1' || path.startsWith('/api/v1/')) return false;
+    if (path.startsWith('/api/') && req.headers.authorization !== undefined) {
+      sendJson(res, 401, { error: 'Bearer credentials are restricted to API v1.' });
+      return true;
+    }
 
     if (isMutation(req) && isForeignOrigin(req, auth, options.allowLoopbackOrigins === true)) {
       sendJson(res, 403, { error: 'Request origin is not allowed.' });

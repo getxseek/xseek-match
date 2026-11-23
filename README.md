@@ -220,6 +220,10 @@ npm run check           # Runs core checks followed by browser tests
 </details>
 
 
+## API v1
+
+Machine consumers can resolve TV/movie titles and search normalized releases with named, scoped API keys. Create keys in **Settings > API access**; credentials are shown once. See the [consumer quickstart and operating limits](docs/api/README.md) and [OpenAPI 3.1 contract](docs/api/openapi.yaml). Keys cannot access browser administration or integration credentials.
+
 ## Security
 
 xseek match is built for personal use.
