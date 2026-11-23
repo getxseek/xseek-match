@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './test/browser',
   fullyParallel: true,
-  workers: 2,
+  // GitHub's runners for public repositories have 4 vCPUs
+  workers: process.env.CI ? 4 : 2,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list'], ['html', { open: 'never' }]],
