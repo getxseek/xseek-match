@@ -2,63 +2,37 @@
 
 All notable changes to xseek match will be documented in this file.
 
-## Unreleased
+## 0.2.0 - 2026-11-23
 
-- Respect provider Retry-After pauses across OpenID Connect requests.
-- Preserve the API's 200-character query allowance when adding TV season and episode numbering.
-- Stop disconnected API requests before starting a search after indexer discovery.
-- Keep local password sign-in available when provider sign-in reaches its rate limit.
-- Include API searches in completed-search counts, cache-hit rates and tracker overlap statistics.
-- Group a re-release with its original year (`Title 1981 2004 Director's Cut` with `Title 1981`), read `Title Season 3 2011` as a movie rather than a season pack, and read a leading `[Title] 2009` as the title rather than a group tag.
-- Keep a movie's year when a word in its title reads like a release tag (`Web`, `Dual`, `Hybrid`, `Internal`), so two copies of such a movie group together again and different years stay apart.
-- Group more copies of the same release across indexers: anime batches with no season (`[Group] Show (BD 1080p) [Batch]`), fansub groups written as a leading `[Name-Subs]` or a trailing `-Name-Subs`, encoder groups inside the spec block (`(1080p … - Encoder) [Collective]` and `(… - Encoder Collective)`), and titles that end in a Roman-numeral season (`Show.XI.S11` with `Show.S11`). `Ma10` is read as a 10-bit tag, never as a group or part of the title, and `(Season 7)` in parentheses is read as season 7.
-- Treat a plain `HDR` tag as HDR10 and `DV HDR10+` as the same file as `DV HDR` when grouping. HLG is now its own HDR value instead of reading as SDR.
-- Verify provider sessions can manage consumer keys without granting keys access to browser authentication routes.
-
-- Use filled neutral authentication buttons with readable text contrast.
-- Remove the unused session-revocation UI branch from provider settings.
-- Place Test OIDC connection beside the provider heading and show its result inside the card with a green success icon.
-- Remove the tracker-definition source caption from Tasks.
-- Add task-header padding and responsive wrapping, and use consistent neutral Run now buttons without refresh icons.
-- Remove redundant provider helper copy and give Link account and Confirm unlink a filled button treatment.
-- Apply the selected Icon toolbar style to provider settings: unboxed status with an icon and grouped ghost actions instead of capsule chips and outlined controls.
-- Hide password confirmation for linked providers until Unlink provider is selected. Cancel clears the password and leaves the link intact.
-- Mark linked providers green, simplify Security to provider controls, and add an OIDC configuration check for discovery, capabilities and signing-key access. Client credentials and callbacks remain verified by sign-in.
-- Show incorrect-password errors beside the relevant account or provider password field, with accessible field associations.
-- Separate provider linking and active sessions into clear Security cards, show link status, and move connection diagnostics into troubleshooting.
-- Reject ID tokens containing audiences other than the configured client ID, even when the authorized party matches. Test string and single-element array audiences.
-- Add standard OpenID Connect owner sign-in using maintained openid-client, discovery, code flow with PKCE/state/nonce, and signature/JWKS/issuer/audience validation. Pocket ID is the primary compatibility target.
-- Add explicit password-authorized linking/unlinking, bounded single-use transactions and callback cookies, one-hour maximum provider sessions, session list/revocation, safe logout and local recovery.
-- Add server-only OIDC configuration, provider discovery diagnostics, bounded security events, setup/rollback runbook, and signed mock-provider security tests. Local sign-in remains enabled; real Pocket ID smoke is a release gate.
-- Use the application User-Agent for OIDC requests and format feature SQL for review.
-- Recheck password-confirmed unlink authorization in the same transaction as identity removal.
-- Prevent a search cancelled during cache lookup from starting upstream work or producing an unhandled rejection. Covered by a disconnect regression.
+Adds an API, single sign-on and a Yata integration, and groups more copies of the same release.
 
 ### API v1
-- Make API key creation and saved-key details easier to scan, with aligned scopes, quiet action toolbars, green success states, and password errors beside the field.
-- Return the standard API error response for the bare `/api/v1` root as well as versioned subpaths.
-- Add bearer-only search, TV/movie title lookup, capability/indexer discovery and credential inspection with a documented OpenAPI 3.1 contract and consumer examples.
-- Add named SHA-256-digested scoped keys, expiry, explicit replacement/revocation, bounded security events, and password-confirmed Settings > API access management. Credentials are shown once and cannot authorize internal browser/admin routes.
-- Share search cache, upstream pauses, deadline and one live admission slot across UI/API; coalesce identical work with independent waiter cancellation, bounded responses and per-key budgets.
-- Preserve browser session origin/CSRF checks; return stable API errors/request IDs and secret-free external DTOs with explicit unknown completeness.
+- Search your trackers and look up TV and movie titles from your own scripts and tools.
+- Named API keys with scopes and expiry, managed under **Settings → API access**. Keys are shown once and can't sign in to the app.
+- Documented with an OpenAPI 3.1 contract and a quickstart.
+
+### Single sign-on
+- Sign in with Pocket ID or any standard OpenID Connect provider.
+- Link and unlink the owner account under **Accounts → Security**. Password sign-in keeps working as a fallback.
+- Review and revoke active provider sessions.
 
 ### Yata
-- Connect your [Yata](https://github.com/Yata-Dash/Yata-Dash) dashboard with a read-only API token to see your account on each tracker while you pick a grab.
-- Ratio and buffer under each tracker in a release group, with hit and runs, rank and promotion progress on hover.
-- A warning when a non-freeleech grab would use more than your buffer on that tracker, with the ratio before and after.
-- Rows inside a release group now rank freeleech copies and trackers with open promotion requirements higher, and trackers where the grab overdraws your buffer lower. Starred trackers still come first. A clear winner gets a suggested-grab mark.
-- Indexer settings show promotion progress from Yata and point out unstarred trackers that are worth a star.
-- Trackers Yata can't refresh show the reason in indexer settings and on the starred tracker chips of a result.
-- Yata trackers are matched to Prowlarr indexers by site address. Integration settings list any that didn't match and say when Yata can't be reached.
+- See your ratio, buffer, hit and runs and promotion progress on each tracker next to its results.
+- Get warned before a grab overdraws your buffer.
+- Freeleech copies and trackers you're working towards a promotion on rank higher in a release group.
+
+### Matching
+- Re-releases group with the original year, and more anime, fansub and encoder group variants match across indexers.
+- `HDR` matches `HDR10`, `DV HDR10+` matches `DV HDR`, and HLG is now its own HDR type.
+- `H.264`/`x264` and `H.265`/`x265` count as the same encoder.
+
+### Changed
+- The screenshot fixture no longer contains real tracker names.
 
 ## 0.1.1 - 2026-10-17
 
 ### Fixed
 - Container image publish: disabled SLSA provenance attestations (`provenance: false`) so multi-arch images are published with Docker v2 manifest lists, restoring compatibility with older Docker daemons (< 20.10.21) and LTS server distributions.
-
-### Changed
-- The screenshot fixture keeps only the mock tracker names. To keep a map from your real trackers to the mock ones, copy `tools/screenshot-fixture/real-names.example.json` to `.local/screenshot-fixture/real-names.json`, which git ignores.
-
 
 ## 0.1.0 - 2026-10-17
 
