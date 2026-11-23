@@ -27,3 +27,12 @@ it('leaves other and malformed URLs untouched', () => {
   });
   expect(posterSources('not a url')).toEqual({ full: 'not a url' });
 });
+
+it('only treats thetvdb.com and its subdomains as TheTVDB', () => {
+  expect(posterSources('https://thetvdb.com/banners/posters/81189-22.jpg').full).toBe(
+    'https://thetvdb.com/banners/posters/81189-22_t.jpg',
+  );
+  expect(posterSources('https://evilthetvdb.com/banners/posters/81189-22.jpg')).toEqual({
+    full: 'https://evilthetvdb.com/banners/posters/81189-22.jpg',
+  });
+});

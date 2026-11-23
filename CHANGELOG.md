@@ -7,6 +7,9 @@ All notable changes to xseek match will be documented in this file.
 ### Changed
 - Release images are only published after the tests pass, and arm64 images are built natively.
 
+### Fixed
+- TheTVDB poster thumbnails are only used for thetvdb.com addresses.
+
 ## 0.2.0 - 2026-11-23
 
 Adds an API, single sign-on and a Yata integration, and groups more copies of the same release.
