@@ -430,7 +430,20 @@ function App() {
     } catch {}
   }
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => {
+    try {
+      return sessionStorage.getItem('match-query-draft') || '';
+    } catch {
+      return '';
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('match-query-draft', query);
+    } catch {
+      /* Storage can be disabled. */
+    }
+  }, [query]);
   const [lastSearch, setLastSearch] = useState<{
     term: string;
     title: string;

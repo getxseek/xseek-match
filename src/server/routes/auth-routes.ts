@@ -2,6 +2,7 @@ import { ApiKeys } from '../services/api-key-service.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readJsonObjectBody, sendJson } from '../lib/http-utils.js';
 import type { Auth, Session } from '../services/auth-service.js';
+import { OIDC_STATE_PATTERN } from '../services/oidc-service.js';
 import type { ProwlarrProbeResult } from '../services/prowlarr-service.js';
 
 export interface AuthRouteOptions {
@@ -69,7 +70,22 @@ function setSessionCookie(res: ServerResponse, auth: Auth, value: string, maxAge
     ...(auth.secure ? ['Secure'] : []),
     ...(maxAge !== undefined ? [`Max-Age=${maxAge}`] : []),
   ];
-  res.setHeader('Set-Cookie', attributes.join('; '));
+  res.appendHeader('Set-Cookie', attributes.join('; '));
+}
+
+function oidcCookie(res: ServerResponse, auth: Auth, state: string, value = '') {
+  res.appendHeader(
+    'Set-Cookie',
+    `match_oidc_${state}=${value}; Path=/api/auth/oidc/callback; HttpOnly; SameSite=Lax; Max-Age=${value ? 300 : 0}${auth.secure ? '; Secure' : ''}`,
+  );
+}
+
+function oidcFailure(res: ServerResponse) {
+  res.statusCode = 400;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(
+    '<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Sign-in failed</title><body><main><h1>Sign-in failed</h1><p>Verification failed or this identity is not linked to the owner. You can retry or sign in with your local password.</p><a href="/">Return to match</a></main></body></html>',
+  );
 }
 
 function clientKey(req: IncomingMessage): string {
@@ -161,6 +177,73 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
     };
 
   const signedInRoutes: Record<string, SignedInRoute> = {
+    'GET /api/auth/sessions': (_req, res, session) => {
+      sendJson(res, 200, { sessions: auth.sessions(session) });
+    },
+    'POST /api/auth/sessions/revoke': async (req, res) => {
+      const input = await readBody(req);
+      if (
+        input.id !== undefined &&
+        (typeof input.id !== 'string' || !/^[a-f0-9]{64}$/.test(input.id))
+      ) {
+        sendJson(res, 400, { error: 'Invalid session.' });
+        return;
+      }
+      auth.revokeSessions(input.id as string | undefined);
+      sendJson(res, 200, { ok: true });
+    },
+    'POST /api/auth/oidc/link': (req, res, session) =>
+      throttled(auth, req, res, async () => {
+        const input = await readBody(req);
+        const verified = await auth.verifyLogin({
+          username: auth.owner()?.username,
+          password: input.password,
+        });
+        if (!verified) {
+          auth.recordFailedAttempt(clientKey(req));
+          sendJson(res, 401, { error: 'Current password is incorrect.' });
+          return;
+        }
+        auth.recordFailedAttempt(clientKey(req));
+        try {
+          const tx = await auth.oidc.begin('link', session, verified);
+          oidcCookie(res, auth, tx.state, tx.binding);
+          sendJson(res, 200, { url: tx.url });
+        } catch {
+          sendJson(res, 503, {
+            error:
+              'Could not begin linking. Check provider configuration or unlink the existing identity first.',
+          });
+        }
+      }),
+    'POST /api/auth/oidc/unlink': (req, res, session) =>
+      throttled(auth, req, res, async () => {
+        const input = await readBody(req);
+        const verified = await auth.verifyLogin({
+          username: auth.owner()?.username,
+          password: input.password,
+        });
+        if (!verified) {
+          auth.recordFailedAttempt(clientKey(req));
+          sendJson(res, 401, { error: 'Current password is incorrect.' });
+          return;
+        }
+        if (!auth.oidc.unlink({ session, passwordHash: verified })) {
+          sendJson(res, 401, { error: 'Credentials changed. Sign in again.' });
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+      }),
+    'POST /api/auth/oidc/diagnostics': async (_req, res) => {
+      try {
+        sendJson(res, 200, await auth.oidc.diagnose());
+      } catch {
+        sendJson(res, 503, {
+          error:
+            'OIDC connection check failed. Check the issuer, client authentication method, signing algorithm and provider connectivity.',
+        });
+      }
+    },
     'GET /api/auth/keys': (_req, res) => sendJson(res, 200, { keys: keys.list() }),
     'POST /api/auth/keys': (req, res) =>
       throttled(auth, req, res, async () => {
@@ -239,6 +322,50 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
 
     if (isMutation(req) && isForeignOrigin(req, auth, options.allowLoopbackOrigins === true)) {
       sendJson(res, 403, { error: 'Request origin is not allowed.' });
+      return true;
+    }
+    if (path === '/api/auth/oidc/callback' && req.method === 'GET') {
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+      );
+      const url = new URL(req.url || '/', auth.origin);
+      const state = url.searchParams.get('state') || '';
+      if (!OIDC_STATE_PATTERN.test(state)) {
+        oidcFailure(res);
+        return true;
+      }
+      const binding = sessionToken(req, `match_oidc_${state}`) || '';
+      oidcCookie(res, auth, state);
+      try {
+        // Reconstruct the origin from trusted configuration, never from Host or forwarded headers.
+        const callback = new URL(auth.oidc.callback);
+        callback.search = url.search;
+        const started = await auth.oidc.finish(callback, binding);
+        setSessionCookie(res, auth, started.token, started.maxAgeSeconds);
+        res.writeHead(303, { Location: '/' });
+        res.end();
+      } catch {
+        auth.oidc.audit('callback_rejected');
+        oidcFailure(res);
+      }
+      return true;
+    }
+    if (path === '/api/auth/oidc/login' && req.method === 'POST') {
+      await throttled(auth, req, res, async () => {
+        // Count starts, including successful starts, to bound outstanding transactions and IdP load.
+        auth.recordFailedAttempt(clientKey(req));
+        try {
+          const tx = await auth.oidc.begin('login', currentSession(req));
+          oidcCookie(res, auth, tx.state, tx.binding);
+          sendJson(res, 200, { url: tx.url });
+        } catch {
+          sendJson(res, 503, {
+            error: 'Provider sign-in unavailable. Use local sign-in or retry later.',
+          });
+        }
+      });
       return true;
     }
     if (routeKey === 'GET /api/auth/status') {

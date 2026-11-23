@@ -4,6 +4,25 @@ All notable changes to xseek match will be documented in this file.
 
 ## Unreleased
 
+- Verify provider sessions can manage consumer keys without granting keys access to browser authentication routes.
+
+- Use filled neutral authentication buttons with readable text contrast.
+- Remove the unused session-revocation UI branch from provider settings.
+- Place Test OIDC connection beside the provider heading and show its result inside the card with a green success icon.
+- Remove the tracker-definition source caption from Tasks.
+- Add task-header padding and responsive wrapping, and use consistent neutral Run now buttons without refresh icons.
+- Remove redundant provider helper copy and give Link account and Confirm unlink a filled button treatment.
+- Apply the selected Icon toolbar style to provider settings: unboxed status with an icon and grouped ghost actions instead of capsule chips and outlined controls.
+- Hide password confirmation for linked providers until Unlink provider is selected. Cancel clears the password and leaves the link intact.
+- Mark linked providers green, simplify Security to provider controls, and add an OIDC configuration check for discovery, capabilities and signing-key access. Client credentials and callbacks remain verified by sign-in.
+- Show incorrect-password errors beside the relevant account or provider password field, with accessible field associations.
+- Separate provider linking and active sessions into clear Security cards, show link status, and move connection diagnostics into troubleshooting.
+- Reject ID tokens containing audiences other than the configured client ID, even when the authorized party matches. Test string and single-element array audiences.
+- Add standard OpenID Connect owner sign-in using maintained openid-client, discovery, code flow with PKCE/state/nonce, and signature/JWKS/issuer/audience validation. Pocket ID is the primary compatibility target.
+- Add explicit password-authorized linking/unlinking, bounded single-use transactions and callback cookies, one-hour maximum provider sessions, session list/revocation, safe logout and local recovery.
+- Add server-only OIDC configuration, provider discovery diagnostics, bounded security events, setup/rollback runbook, and signed mock-provider security tests. Local sign-in remains enabled; real Pocket ID smoke is a release gate.
+- Use the application User-Agent for OIDC requests and format feature SQL for review.
+- Recheck password-confirmed unlink authorization in the same transaction as identity removal.
 - Prevent a search cancelled during cache lookup from starting upstream work or producing an unhandled rejection. Covered by a disconnect regression.
 
 ### API v1

@@ -20,6 +20,7 @@ type AuthStatus = {
   csrf?: string;
   onboarded: boolean;
   step?: string;
+  oidc?: { enabled: boolean; linked: boolean; loginAvailable: boolean; displayName: string };
 };
 
 type ConnectionProbeResult = {
@@ -703,18 +704,37 @@ function Gate() {
               </button>
             </div>
           ) : !status.authenticated ? (
-            <AuthCredentialsStep
-              setup={setup}
-              username={username}
-              setUsername={setUsername}
-              password={password}
-              setPassword={setPassword}
-              remember={remember}
-              setRemember={setRemember}
-              busy={busy}
-              error={error}
-              onSubmit={(event) => void submitCredentials(event)}
-            />
+            <>
+              {!setup && status.oidc?.loginAvailable && (
+                <button
+                  className="auth-primary"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    void authRequest('oidc/login', {})
+                      .then((result) => location.assign(result.url))
+                      .catch((err: unknown) => {
+                        setError(err instanceof Error ? err.message : 'Provider sign-in failed');
+                        setBusy(false);
+                      });
+                  }}
+                >
+                  Sign in with {status.oidc.displayName}
+                </button>
+              )}
+              <AuthCredentialsStep
+                setup={setup}
+                username={username}
+                setUsername={setUsername}
+                password={password}
+                setPassword={setPassword}
+                remember={remember}
+                setRemember={setRemember}
+                busy={busy}
+                error={error}
+                onSubmit={(event) => void submitCredentials(event)}
+              />
+            </>
           ) : !ready ? (
             <p>{error || 'Loading your preferences…'}</p>
           ) : (

@@ -154,6 +154,8 @@ These are read-only calls. API keys stay on the server and are never sent back t
 
 There's a single owner account. Change your password or sign out under **Settings → Accounts**.
 
+Optional standard OpenID Connect sign-in supports Pocket ID and compatible providers. Link the owner explicitly from **Accounts → Security** after local setup. See [OIDC configuration, sessions and recovery](docs/oidc.md). Local password sign-in stays enabled.
+
 Forgot it? Reset it directly from the console:
 
 ```bash

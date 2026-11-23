@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { argon2id, hash, verify } from 'argon2';
 import { isPrivateNetworkHost } from '../lib/network-scope.js';
+import { OidcService } from './oidc-service.js';
 import {
   AuthStore,
   type OwnerRecord as Owner,
@@ -68,6 +69,7 @@ export class Auth {
   readonly origin: string;
   readonly secure: boolean;
   readonly cookieName: string;
+  readonly oidc: OidcService;
 
   constructor(env: Record<string, string | undefined>, dataDir: string) {
     const appOrigin = parseAppOrigin(env.APP_ORIGIN);
@@ -75,6 +77,12 @@ export class Auth {
     this.secure = appOrigin.protocol === 'https:';
     this.cookieName = this.secure ? '__Host-match_session' : 'match_session';
     this.store = new AuthStore(join(dataDir, 'match.sqlite'));
+    try {
+      this.oidc = new OidcService(env, this);
+    } catch (error) {
+      this.store.close();
+      throw error;
+    }
   }
 
   get db(): DatabaseSync {
@@ -98,6 +106,7 @@ export class Auth {
       csrf: session?.csrf,
       onboarded: !!owner?.onboarded,
       step: this.meta('onboarding-step') || 'connection',
+      oidc: this.oidc.status(),
     };
   }
 
@@ -120,16 +129,49 @@ export class Auth {
   /** Returns the live session for a cookie token; expired or idle sessions are removed. */
   findSession(token: string | undefined): Session | undefined {
     if (!token || token.length > MAX_SESSION_TOKEN_LENGTH) return undefined;
-    const session = this.store.session(sha256Hex(token));
+    const session = this.sessionById(sha256Hex(token));
+    if (!session) return undefined;
+
+    this.store.updateSessionSeen(session.id, Date.now());
+    return session;
+  }
+
+  sessionById(id: string): Session | undefined {
+    const session = this.store.session(id);
     if (!session) return undefined;
 
     const now = Date.now();
-    if (session.expires <= now || session.seen < now - SESSION_IDLE_TIMEOUT_MS) {
+    if (
+      session.expires <= now ||
+      session.seen < now - SESSION_IDLE_TIMEOUT_MS ||
+      !this.oidc.isSessionAllowed(id)
+    ) {
       this.store.deleteSession(session.id);
       return undefined;
     }
-    this.store.updateSessionSeen(session.id, now);
     return session;
+  }
+
+  /** Called inside the OIDC identity/session transaction. */
+  startOidcSession(expires: number, replacing?: Session): StartedSession {
+    const token = generateRandomToken();
+    const csrf = generateRandomToken();
+    if (replacing) this.store.deleteSession(replacing.id);
+    this.store.saveSession(sha256Hex(token), csrf, Date.now(), expires, SESSION_IDLE_TIMEOUT_MS);
+    return { token, csrf, maxAgeSeconds: Math.max(0, Math.floor((expires - Date.now()) / 1000)) };
+  }
+
+  sessions(current: Session) {
+    return this.store.activeSessions(Date.now(), SESSION_IDLE_TIMEOUT_MS).map((session) => ({
+      ...session,
+      method: this.oidc.sessionMethod(session.id),
+      current: session.id === current.id,
+    }));
+  }
+
+  revokeSessions(id?: string) {
+    if (id) this.store.deleteSession(id);
+    else this.store.deleteAllSessions();
   }
 
   /**
@@ -258,10 +300,12 @@ export class Auth {
   }
 
   resetOnboarding(): void {
+    this.oidc.unlink();
     this.store.resetOnboarding();
   }
 
   close(): void {
+    this.oidc.close();
     this.store.close();
   }
 }

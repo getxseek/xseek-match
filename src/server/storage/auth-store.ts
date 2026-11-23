@@ -25,6 +25,7 @@ export interface IAuthStore {
   setOnboarded(): void;
   meta(key: string, value?: string): string | undefined;
   session(tokenHash: string): SessionRecord | undefined;
+  activeSessions(now: number, idleTimeoutMs: number): Omit<SessionRecord, 'csrf'>[];
   saveSession(
     tokenHash: string,
     csrf: string,
@@ -65,6 +66,14 @@ const AUTH_SCHEMA_SQL = `
     count INTEGER NOT NULL,
     until INTEGER NOT NULL
   );
+`;
+
+const ACTIVE_SESSIONS_SQL = `
+  SELECT id, created, expires, seen
+  FROM sessions
+  WHERE expires > ? AND seen > ?
+  ORDER BY created DESC
+  LIMIT 100
 `;
 
 export class AuthStore implements IAuthStore {
@@ -125,6 +134,13 @@ export class AuthStore implements IAuthStore {
   session(tokenHash: string): SessionRecord | undefined {
     return this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(tokenHash) as
       SessionRecord | undefined;
+  }
+
+  activeSessions(now: number, idleTimeoutMs: number): Omit<SessionRecord, 'csrf'>[] {
+    return this.db.prepare(ACTIVE_SESSIONS_SQL).all(now, now - idleTimeoutMs) as Omit<
+      SessionRecord,
+      'csrf'
+    >[];
   }
 
   updateSessionSeen(tokenHash: string, now: number): void {

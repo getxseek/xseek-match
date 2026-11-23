@@ -2052,20 +2052,21 @@ html {
 
 .task-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding: 16px 20px;
 }
 .task-heading h3 {
   margin: 0;
+  padding: 0;
 }
 .task-card .match-note {
-  margin: 14px 0 20px;
+  margin: 14px 20px 20px;
 }
 .task-card .task-heading button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
+  flex-shrink: 0;
 }
 
 .settings-content {

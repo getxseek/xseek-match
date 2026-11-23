@@ -102,6 +102,154 @@ async function fixture(page: Page) {
   return { errors, values, searches };
 }
 
+test('OIDC sign-in failure keeps local sign-in available', async ({ page }) => {
+  await page.route('**/api/auth/status', (route) =>
+    route.fulfill({
+      json: {
+        setup: false,
+        authenticated: false,
+        onboarded: true,
+        oidc: { enabled: true, linked: true, loginAvailable: true, displayName: 'Pocket ID' },
+      },
+    }),
+  );
+  await page.route('**/api/auth/oidc/login', (route) =>
+    route.fulfill({ status: 503, json: { error: 'Provider unavailable. Use local sign-in.' } }),
+  );
+  await page.goto('/');
+  await page.getByRole('textbox', { name: 'Username', exact: true }).fill('owner');
+  await page.getByRole('button', { name: 'Sign in with Pocket ID', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Provider unavailable');
+  await expect(page.getByRole('textbox', { name: 'Username', exact: true })).toHaveValue('owner');
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+});
+
+test('Security links explicitly, sends CSRF, checks OIDC and passes accessibility checks', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  let linked = false;
+  await page.route('**/api/auth/status', (route) =>
+    route.fulfill({
+      json: {
+        setup: false,
+        authenticated: true,
+        onboarded: true,
+        csrf: 'fixture',
+        oidc: { enabled: true, linked, displayName: 'Pocket ID' },
+      },
+    }),
+  );
+  await page.route('**/api/auth/sessions', (route) =>
+    route.fulfill({
+      json: {
+        sessions: [
+          {
+            id: 'a'.repeat(64),
+            current: 1,
+            method: 'password',
+            seen: Date.now(),
+            created: Date.now(),
+            expires: Date.now() + 3600000,
+          },
+        ],
+      },
+    }),
+  );
+  let linkAttempts = 0;
+  await page.route('**/api/auth/oidc/link', (route) => {
+    expect(route.request().headers()['x-csrf-token']).toBe('fixture');
+    expect(route.request().postDataJSON()).toEqual({ password: 'fixture-password' });
+    linkAttempts++;
+    return linkAttempts === 1
+      ? route.fulfill({ status: 401, json: { error: 'Current password is incorrect.' } })
+      : route.fulfill({ status: 503, json: { error: 'Provider discovery unavailable.' } });
+  });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /^Security/ })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Active sessions' })).toHaveCount(0);
+  await page.getByRole('textbox', { name: /^Verify local password/ }).fill('fixture-password');
+  await page.getByRole('button', { name: 'Link account', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Current password is incorrect.');
+  await expect(page.getByRole('textbox', { name: /^Verify local password/ })).toHaveAttribute(
+    'aria-describedby',
+    'provider-password-error',
+  );
+  await page.getByRole('button', { name: 'Link account', exact: true }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Provider discovery unavailable.' }),
+  ).toBeVisible();
+  await page.route('**/api/auth/oidc/diagnostics', (route) => {
+    expect(route.request().headers()['x-csrf-token']).toBe('fixture');
+    return route.fulfill({ json: { ok: true, signInRequired: true } });
+  });
+  await page.getByRole('button', { name: 'Test OIDC connection', exact: true }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'OIDC configuration check passed.' }),
+  ).toBeVisible();
+  linked = true;
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await expect(page.getByText('Linked', { exact: true })).toHaveClass(/is-linked/);
+  await expect(page.getByRole('textbox', { name: /^Verify local password/ })).toHaveCount(0);
+  let unlinkRequests = 0;
+  await page.route('**/api/auth/oidc/unlink', (route) => {
+    unlinkRequests++;
+    expect(route.request().postDataJSON()).toEqual({ password: 'wrong-password' });
+    return route.fulfill({ status: 401, json: { error: 'Current password is incorrect.' } });
+  });
+  await page.getByRole('button', { name: 'Unlink provider', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: /^Verify local password/ })).toBeVisible();
+  expect(unlinkRequests).toBe(0);
+  await page.getByRole('textbox', { name: /^Verify local password/ }).fill('wrong-password');
+  await page.getByRole('button', { name: 'Confirm unlink', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Current password is incorrect.');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: /^Verify local password/ })).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Unlink provider', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: /^Verify local password/ })).toHaveValue('');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  const audit = await new AxeBuilder({ page })
+    .include('main')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+    .analyze();
+  expect(
+    audit.violations
+      .filter((violation) => ['critical', 'serious'].includes(violation.impact || ''))
+      .map((violation) => ({
+        id: violation.id,
+        nodes: violation.nodes.map((node) => ({
+          target: node.target,
+          summary: node.failureSummary,
+        })),
+      })),
+  ).toEqual([]);
+  expect(state.errors).toEqual([]);
+});
+
+test('entered query survives session expiry and local authentication', async ({ page }) => {
+  await fixture(page);
+  await page.route('**/api/auth/login', (route) =>
+    route.fulfill({
+      json: {
+        setup: false,
+        authenticated: true,
+        onboarded: true,
+        csrf: 'fixture',
+      },
+    }),
+  );
+  await page.getByRole('combobox').fill('Unsubmitted draft S02');
+  await page.evaluate(() => window.dispatchEvent(new Event('auth-required')));
+  await page.getByRole('textbox', { name: 'Username', exact: true }).fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('fixture-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('combobox')).toHaveValue('Unsubmitted draft S02');
+});
+
 test('search, v2 grouping, details, filters, flat view and history replay', async ({ page }) => {
   const state = await fixture(page);
   await page.getByRole('combobox').fill('Show S01');

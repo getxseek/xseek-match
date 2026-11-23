@@ -1,0 +1,84 @@
+.security-panel {
+  display: grid;
+  gap: 16px;
+  max-width: 640px;
+}
+.security-card {
+  border: 1px solid var(--gray-33);
+  border-radius: 12px;
+  padding: 20px;
+}
+.security-card h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.security-status-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.security-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--gray-ee);
+  font-size: 13px;
+}
+.security-status-detail {
+  color: var(--gray-99);
+  font-size: 12px;
+}
+.security-state svg,
+.security-toolbar svg,
+.security-provider-heading svg,
+.security-feedback svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.security-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.security-toolbar button {
+  gap: 8px;
+}
+.security-provider-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.security-provider-heading button {
+  gap: 8px;
+}
+.security-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+.security-feedback:empty {
+  display: none;
+}
+.security-feedback.is-success {
+  color: var(--success-line);
+}
+.security-card > .match-note {
+  margin: 12px 0 20px;
+}
+.security-connection-test {
+  border-top: 1px solid var(--gray-33);
+  padding-top: 18px;
+  margin-top: 18px;
+}
+.security-state.is-linked {
+  color: var(--success-line);
+}
