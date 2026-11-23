@@ -33,6 +33,10 @@ export class SearchFailure extends Error {
     super(message);
   }
 }
+export interface TvSearchNumbering {
+  season: number;
+  episode?: number;
+}
 export interface SearchSnapshot {
   cacheKey: string;
   results: Result[];
@@ -59,21 +63,51 @@ export class SearchService {
     signal?: AbortSignal,
     beforeLive?: () => void,
     includedIds?: ReadonlySet<number>,
+    tvNumbering?: TvSearchNumbering,
+  ): Promise<SearchSnapshot> {
+    const started = Date.now();
+    const { statistics, logger } = this.options;
+    let result: SearchSnapshot;
+    try {
+      result = await this.execute(params, signal, beforeLive, includedIds, tvNumbering);
+    } catch (error) {
+      if (!signal?.aborted) statistics.count('failed');
+      throw error;
+    }
+    statistics.count('searches');
+    statistics.timing('durationMs', Date.now() - started);
+    if (result.searchMode !== 'search') statistics.count('enriched');
+    try {
+      statistics.queueOverlap(result.results, `${result.cacheKey}:${result.retrievedAt}`);
+    } catch {
+      logger.log('error', 'Could not queue overlap statistics');
+    }
+    return result;
+  }
+  private async execute(
+    params: URLSearchParams,
+    signal?: AbortSignal,
+    beforeLive?: () => void,
+    includedIds?: ReadonlySet<number>,
+    tvNumbering?: TvSearchNumbering,
   ): Promise<SearchSnapshot> {
     const options = this.options;
     const started = Date.now();
-    const query = params.get('q')?.trim();
+    const inputQuery = params.get('q')?.trim();
     const excludedIds = new Set(
       (params.get('exclude') ?? '').split(',').filter(Boolean).map(Number),
     );
     if ([...excludedIds].some((id) => !Number.isSafeInteger(id) || id < 1))
       throw new SearchFailure(400, 'invalid_request', 'Invalid tracker exclusions.');
-    if (!query || query.length > 200)
+    if (!inputQuery || inputQuery.length > 200)
       throw new SearchFailure(
         400,
         'invalid_request',
         'Enter a show and season (up to 200 characters).',
       );
+    const query = tvNumbering
+      ? `${inputQuery} S${String(tvNumbering.season).padStart(2, '0')}${tvNumbering.episode === undefined ? '' : `E${String(tvNumbering.episode).padStart(2, '0')}`}`
+      : inputQuery;
     if (!options.prowlarrBaseUrl || !options.env.PROWLARR_API_KEY)
       throw new SearchFailure(503, 'dependency_unavailable', 'Prowlarr is not connected.');
     let selected: ReturnType<typeof prowlarrQuery>;
@@ -94,7 +128,7 @@ export class SearchService {
     });
     try {
       const stored = await options.cacheStore.readSearch(key);
-      if (stored) {
+      if (stored && !signal?.aborted) {
         const age = Date.now() - stored.at;
         if (
           params.get('refresh') !== '1' &&

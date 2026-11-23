@@ -4,6 +4,12 @@ All notable changes to xseek match will be documented in this file.
 
 ## Unreleased
 
+- Respect provider Retry-After pauses across OpenID Connect requests.
+- Preserve the API's 200-character query allowance when adding TV season and episode numbering.
+- Stop disconnected API requests before starting a search after indexer discovery.
+- Keep local password sign-in available when provider sign-in reaches its rate limit.
+- Include API searches in completed-search counts, cache-hit rates and tracker overlap statistics.
+
 - Verify provider sessions can manage consumer keys without granting keys access to browser authentication routes.
 
 - Use filled neutral authentication buttons with readable text contrast.

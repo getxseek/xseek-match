@@ -18,23 +18,9 @@ export function registerSearchRoute(
       if (!res.writableFinished) controller.abort();
     };
     res.once('close', abort);
-    const started = Date.now();
     try {
       const params = new URL(req.url ?? '', 'http://localhost').searchParams;
       const result = await service.search(params, controller.signal);
-      options.statistics.count('searches');
-      options.statistics.timing('durationMs', Date.now() - started);
-      if (result.searchMode !== 'search') options.statistics.count('enriched');
-      res.once('finish', () => {
-        try {
-          options.statistics.queueOverlap(
-            result.results,
-            `${result.cacheKey}:${result.retrievedAt}`,
-          );
-        } catch {
-          options.logger.log('error', 'Could not queue overlap statistics');
-        }
-      });
       sendJson(res, 200, {
         results: result.results,
         cached: result.cached,
@@ -43,7 +29,6 @@ export function registerSearchRoute(
       });
     } catch (error) {
       if (controller.signal.aborted) return;
-      options.statistics.count('failed');
       if (error instanceof SearchFailure) {
         if (error.retryAfterSeconds) res.setHeader('Retry-After', String(error.retryAfterSeconds));
         sendJson(res, error.status, { error: error.message });

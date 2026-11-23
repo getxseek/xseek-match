@@ -92,6 +92,13 @@ function clientKey(req: IncomingMessage): string {
   return req.socket.remoteAddress || 'unknown';
 }
 
+function admitOidcStart(auth: Auth, req: IncomingMessage, res: ServerResponse): boolean {
+  if (auth.beginOidcStart(clientKey(req))) return true;
+  res.setHeader('Retry-After', ATTEMPT_COOLDOWN_SECONDS);
+  sendJson(res, 429, { error: 'Too many attempts. Please try again later.' });
+  return false;
+}
+
 /** Runs a credential check only if the sign-in throttle admits it. */
 async function throttled(
   auth: Auth,
@@ -204,7 +211,7 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
           sendJson(res, 401, { error: 'Current password is incorrect.' });
           return;
         }
-        auth.recordFailedAttempt(clientKey(req));
+        if (!admitOidcStart(auth, req, res)) return;
         try {
           const tx = await auth.oidc.begin('link', session, verified);
           oidcCookie(res, auth, tx.state, tx.binding);
@@ -214,6 +221,8 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
             error:
               'Could not begin linking. Check provider configuration or unlink the existing identity first.',
           });
+        } finally {
+          auth.finishOidcStart();
         }
       }),
     'POST /api/auth/oidc/unlink': (req, res, session) =>
@@ -353,19 +362,18 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
       return true;
     }
     if (path === '/api/auth/oidc/login' && req.method === 'POST') {
-      await throttled(auth, req, res, async () => {
-        // Count starts, including successful starts, to bound outstanding transactions and IdP load.
-        auth.recordFailedAttempt(clientKey(req));
-        try {
-          const tx = await auth.oidc.begin('login', currentSession(req));
-          oidcCookie(res, auth, tx.state, tx.binding);
-          sendJson(res, 200, { url: tx.url });
-        } catch {
-          sendJson(res, 503, {
-            error: 'Provider sign-in unavailable. Use local sign-in or retry later.',
-          });
-        }
-      });
+      if (!admitOidcStart(auth, req, res)) return true;
+      try {
+        const tx = await auth.oidc.begin('login', currentSession(req));
+        oidcCookie(res, auth, tx.state, tx.binding);
+        sendJson(res, 200, { url: tx.url });
+      } catch {
+        sendJson(res, 503, {
+          error: 'Provider sign-in unavailable. Use local sign-in or retry later.',
+        });
+      } finally {
+        auth.finishOidcStart();
+      }
       return true;
     }
     if (routeKey === 'GET /api/auth/status') {

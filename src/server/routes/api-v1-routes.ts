@@ -7,7 +7,11 @@ import { sendJson, readJsonObjectBody } from '../lib/http-utils.js';
 import type { Integrations } from '../services/integrations-service.js';
 import type { ProwlarrService } from '../services/prowlarr-service.js';
 import { ApiKeys } from '../services/api-key-service.js';
-import { SearchFailure, type SearchService } from '../services/search-service.js';
+import {
+  SearchFailure,
+  type SearchService,
+  type TvSearchNumbering,
+} from '../services/search-service.js';
 import { UpstreamPaused } from '../services/upstream-policy.js';
 import type { Router } from './router.js';
 
@@ -34,6 +38,7 @@ export function parseApiSearch(input: Record<string, unknown>): {
   params: URLSearchParams;
   limit: number;
   indexerIds?: number[];
+  tvNumbering?: TvSearchNumbering;
 } {
   validateFields(input, ['query', 'selection', 'numbering', 'indexerIds', 'limit']);
   if (
@@ -42,7 +47,8 @@ export function parseApiSearch(input: Record<string, unknown>): {
     input.query.length > API_LIMITS.queryMaxCharacters
   )
     invalid('Query must contain 2–200 characters.');
-  let query = input.query.trim();
+  const query = input.query.trim();
+  let tvNumbering: TvSearchNumbering | undefined;
   const params = new URLSearchParams();
   if (input.selection !== undefined) {
     const selection = requireObject(input.selection);
@@ -76,8 +82,7 @@ export function parseApiSearch(input: Record<string, unknown>): {
           (episode === undefined && suffix[2] !== undefined))
       )
         invalid('Query numbering conflicts with selection.');
-      if (!suffix)
-        query += ` S${String(season).padStart(2, '0')}${episode === undefined ? '' : `E${String(episode).padStart(2, '0')}`}`;
+      if (!suffix) tvNumbering = { season, episode };
     }
   }
   if (input.numbering !== undefined && input.numbering !== 'tvdb' && input.numbering !== 'release')
@@ -98,6 +103,7 @@ export function parseApiSearch(input: Record<string, unknown>): {
   }
   return {
     params,
+    tvNumbering,
     limit:
       input.limit === undefined
         ? API_LIMITS.defaultSearchResults
@@ -250,29 +256,31 @@ async function searchReleases(
   keyId: string,
   options: ApiV1Options,
 ): Promise<void> {
-  const parsed = parseApiSearch(await readApiBody(req));
-  if (parsed.indexerIds) {
-    const indexers = await options.prowlarr.getIndexers();
-    if (
-      parsed.indexerIds.some(
-        (id) => !indexers.some((indexer) => indexer.id === id && indexer.available),
-      )
-    )
-      invalid('Unknown or unavailable indexer ID.');
-    parsed.params.set(
-      'exclude',
-      indexers
-        .filter((indexer) => !parsed.indexerIds!.includes(indexer.id))
-        .map((indexer) => indexer.id)
-        .join(','),
-    );
-  }
   const controller = new AbortController();
   const abort = () => {
     if (!res.writableFinished) controller.abort();
   };
   res.once('close', abort);
   try {
+    const parsed = parseApiSearch(await readApiBody(req));
+    if (controller.signal.aborted) return;
+    if (parsed.indexerIds) {
+      const indexers = await options.prowlarr.getIndexers();
+      if (controller.signal.aborted) return;
+      if (
+        parsed.indexerIds.some(
+          (id) => !indexers.some((indexer) => indexer.id === id && indexer.available),
+        )
+      )
+        invalid('Unknown or unavailable indexer ID.');
+      parsed.params.set(
+        'exclude',
+        indexers
+          .filter((indexer) => !parsed.indexerIds!.includes(indexer.id))
+          .map((indexer) => indexer.id)
+          .join(','),
+      );
+    }
     const snapshot = await options.search.search(
       parsed.params,
       controller.signal,
@@ -287,6 +295,7 @@ async function searchReleases(
           );
       },
       parsed.indexerIds ? new Set(parsed.indexerIds) : undefined,
+      parsed.tvNumbering,
     );
     const results = [...snapshot.results]
       .sort(

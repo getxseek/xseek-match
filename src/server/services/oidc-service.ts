@@ -1,7 +1,6 @@
 import { createHash, createPublicKey, randomBytes, type webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import * as client from 'openid-client';
-import { XSEEK_USER_AGENT } from '../../version.js';
 import type { Auth, Session } from './auth-service.js';
 import { OidcStore } from '../storage/oidc-store.js';
 import { withImmediateTransaction } from '../storage/migrations.js';
@@ -39,7 +38,7 @@ export class OidcService {
   private readonly store: OidcStore;
   private configuration?: Promise<client.Configuration>;
   private pruneTimer?: ReturnType<typeof setInterval>;
-  private readonly diagnosticsHttp = new UpstreamPolicy();
+  private readonly http = new UpstreamPolicy();
 
   constructor(
     env: Record<string, string | undefined>,
@@ -135,11 +134,9 @@ export class OidcService {
           timeout: 10,
           execute: [client.enableNonRepudiationChecks],
           [client.customFetch]: (url, options) => {
-            const headers = new Headers(options.headers);
-            headers.set('User-Agent', XSEEK_USER_AGENT);
             const body =
               options.body instanceof Uint8Array ? new Uint8Array(options.body) : options.body;
-            return fetch(url, { ...options, body, headers });
+            return this.http.fetch(url, { ...options, body });
           },
         },
       )
@@ -176,7 +173,7 @@ export class OidcService {
         !metadata.code_challenge_methods_supported.includes('S256'))
     )
       throw new Error('provider_capabilities_mismatch');
-    const response = await this.diagnosticsHttp.fetch(metadata.jwks_uri!, {
+    const response = await this.http.fetch(metadata.jwks_uri!, {
       signal: AbortSignal.timeout(10_000),
       redirect: 'error',
     });

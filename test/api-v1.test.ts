@@ -9,6 +9,7 @@ import { createApp } from '../src/server/http';
 import { ApiKeys } from '../src/server/services/api-key-service';
 import { parseApiSearch } from '../src/server/routes/api-v1-routes';
 import { SearchService } from '../src/server/services/search-service';
+import { ProwlarrService } from '../src/server/services/prowlarr-service';
 import { SearchCacheStore } from '../src/server/storage/search-cache-store';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -17,7 +18,10 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 const scopes = ['search:read', 'titles:read', 'indexers:read'];
-async function fixture(onSearch?: (signal?: AbortSignal | null) => Promise<void>) {
+async function fixture(
+  onSearch?: (signal?: AbortSignal | null) => Promise<Response | void>,
+  resultIndexerIds = [1],
+) {
   const dir = mkdtempSync(join(tmpdir(), 'match-v1-'));
   const origin = 'http://127.0.0.1:5198';
   const native = globalThis.fetch;
@@ -38,19 +42,21 @@ async function fixture(onSearch?: (signal?: AbortSignal | null) => Promise<void>
         ]);
       upstreamCalls++;
       searchUrls.push(new URL(String(url)));
-      await onSearch?.(init?.signal);
-      return Response.json([
-        {
+      const response = await onSearch?.(init?.signal);
+      if (response) return response;
+      return Response.json(
+        resultIndexerIds.map((indexerId) => ({
           protocol: 'torrent',
           guid: 'https://tracker.test/download?passkey=NEVER_EXPOSE',
           downloadUrl: 'NEVER_EXPOSE',
-          indexerId: 1,
-          indexer: 'Fixture',
+          indexerId,
+          indexer: `Fixture ${indexerId}`,
+          infoHash: '0123456789abcdef0123456789abcdef01234567',
           title: 'Show.S01',
           size: 100,
           infoUrl: 'https://tracker.test/details.php?id=1&passkey=NEVER_EXPOSE',
-        },
-      ]);
+        })),
+      );
     }
     return native(url, init);
   });
@@ -104,6 +110,7 @@ async function fixture(onSearch?: (signal?: AbortSignal | null) => Promise<void>
       headers: { Authorization: `Bearer ${credential}`, ...init.headers },
     });
   return {
+    app,
     dir,
     native,
     base,
@@ -216,6 +223,144 @@ describe('API v1 boundary', () => {
     expect(discovery.data.indexers[0].id).toBe(1);
     expect(JSON.stringify(discovery)).not.toContain('private-tracker');
   });
+  it.each([
+    ['tvdb', undefined],
+    ['tvdb', 999],
+    ['release', undefined],
+    ['release', 999],
+  ] as const)(
+    'accepts 200 query characters with %s numbering and episode %s',
+    async (numbering, episode) => {
+      let calls = 0;
+      const f = await fixture(async () => {
+        if (++calls === 1 && numbering === 'tvdb') return Response.json([]);
+      });
+      const query = 'X'.repeat(200);
+      const suffix = ` S999${episode === undefined ? '' : 'E999'}`;
+      const expectedQuery =
+        numbering === 'release'
+          ? query + suffix
+          : `${query} {tvdbid:123} {season:999}${episode === undefined ? '' : ' {episode:999}'}`;
+      const search = (text: string) =>
+        f.request('/api/v1/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: text,
+            numbering,
+            selection: {
+              mediaType: 'tv',
+              ids: { tvdb: 123 },
+              season: 999,
+              episode,
+            },
+          }),
+        });
+      const response = await search(query);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.meta.effectiveQuery).toBe(expectedQuery);
+      expect(data.meta.textFallback).toBe(numbering === 'tvdb');
+      expect(f.searchUrls[0]!.searchParams.get('query')).toBe(expectedQuery);
+      expect(f.searchUrls[0]!.searchParams.get('type')).toBe(
+        numbering === 'tvdb' ? 'tvsearch' : 'search',
+      );
+      if (numbering === 'tvdb') {
+        expect(f.searchUrls[1]!.searchParams.get('query')).toBe(query + suffix);
+        expect(f.searchUrls[1]!.searchParams.get('type')).toBe('search');
+      }
+      expect((await (await search(query)).json()).meta.cached).toBe(true);
+      expect((await search(query + 'X')).status).toBe(400);
+      const browser = await f.native(
+        f.base +
+          '/api/match/search?' +
+          new URLSearchParams({
+            q: query + suffix,
+            kind: 'sonarr',
+            id: '123',
+            numbering,
+          }),
+        { headers: { Cookie: f.headers.Cookie } },
+      );
+      expect(browser.status).toBe(400);
+      expect(f.upstreamCalls()).toBe(numbering === 'tvdb' ? 2 : 1);
+    },
+  );
+  it.each(['tvdb', 'release'])(
+    'shares numbered %s API searches with the browser cache',
+    async (numbering) => {
+      const f = await fixture();
+      const response = await f.request('/api/v1/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: 'Show',
+          numbering,
+          selection: {
+            mediaType: 'tv',
+            ids: { tvdb: 123 },
+            season: 1,
+            episode: 2,
+          },
+        }),
+      });
+      expect(response.status).toBe(200);
+      const browser = await f.native(
+        f.base + `/api/match/search?q=Show%20S01E02&kind=sonarr&id=123&numbering=${numbering}`,
+        {
+          headers: { Cookie: f.headers.Cookie },
+        },
+      );
+      expect(browser.status).toBe(200);
+      expect((await browser.json()).cached).toBe(true);
+      expect(f.upstreamCalls()).toBe(1);
+    },
+  );
+  it('records API and browser searches once each and deduplicates cached overlap samples', async () => {
+    const f = await fixture(undefined, [1, 2]);
+    const statistics = async () =>
+      (
+        await f.native(f.base + '/api/match/statistics', {
+          headers: { Cookie: f.headers.Cookie },
+        })
+      ).json();
+    const search = () =>
+      f.request('/api/v1/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: 'Show',
+          selection: { mediaType: 'tv', ids: { tvdb: 123 } },
+          limit: 1,
+        }),
+      });
+    expect((await search()).status).toBe(200);
+    const first = await statistics();
+    expect(first.counts).toMatchObject({ searches: 1, liveSearches: 1, enriched: 1 });
+    await vi.waitFor(async () => {
+      expect((await statistics()).overlap).toEqual([
+        expect.objectContaining({ aId: 1, bId: 2, total: 1, evidence: 'hash' }),
+      ]);
+    });
+    expect((await search()).status).toBe(200);
+    expect(
+      (
+        await f.native(f.base + '/api/match/search?q=Show&kind=sonarr&id=123', {
+          headers: { Cookie: f.headers.Cookie },
+        })
+      ).status,
+    ).toBe(200);
+    const final = await statistics();
+    expect(final.counts).toMatchObject({ searches: 3, liveSearches: 1, cacheHits: 2, enriched: 3 });
+    expect(
+      final.timings.find((timing: { operation: string }) => timing.operation === 'durationMs')
+        .count,
+    ).toBe(3);
+    expect(final.overlap).toEqual([
+      expect.objectContaining({ aId: 1, bId: 2, total: 1, evidence: 'hash' }),
+    ]);
+    expect(f.upstreamCalls()).toBe(1);
+  });
   it('returns stable method/body/input/dependency errors and bounds key budgets', async () => {
     const f = await fixture();
     const method = await f.request('/api/v1/search');
@@ -250,7 +395,8 @@ it('maps typed title identity and rejects invalid or conflicting numbering', () 
     query: 'Example',
     selection: { mediaType: 'tv', ids: { tvdb: 123 }, season: 1, episode: 2 },
   });
-  expect(parsed.params.get('q')).toBe('Example S01E02');
+  expect(parsed.params.get('q')).toBe('Example');
+  expect(parsed.tvNumbering).toEqual({ season: 1, episode: 2 });
   expect(parsed.params.get('id')).toBe('123');
   for (const input of [
     { query: 'Example', selection: { mediaType: 'tv', ids: { tmdb: 123 } } },
@@ -352,6 +498,86 @@ it('shares browser/API live work and disconnecting one waiter preserves the rema
   release();
   expect((await ui).status).toBe(200);
   expect(f.upstreamCalls()).toBe(1);
+  const stats = await (
+    await f.native(f.base + '/api/match/statistics', {
+      headers: { Cookie: f.headers.Cookie },
+    })
+  ).json();
+  expect(stats.counts).toMatchObject({ searches: 1, failed: 1, liveSearches: 1 });
+});
+
+it('counts each coalesced caller and records one overlap sample', async () => {
+  let release!: () => void;
+  let entered = false;
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = await fixture(async () => {
+    entered = true;
+    await ready;
+  }, [1, 2]);
+  const api = f.request('/api/v1/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{"query":"Shared"}',
+  });
+  await vi.waitFor(() => expect(entered).toBe(true));
+  const ui = f.native(f.base + '/api/match/search?q=Shared', {
+    headers: { Cookie: f.headers.Cookie },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  release();
+  expect((await api).status).toBe(200);
+  expect((await ui).status).toBe(200);
+  await vi.waitFor(async () => {
+    const stats = await (
+      await f.native(f.base + '/api/match/statistics', {
+        headers: { Cookie: f.headers.Cookie },
+      })
+    ).json();
+    expect(stats.counts).toMatchObject({ searches: 2, liveSearches: 1 });
+    expect(stats.overlap).toEqual([expect.objectContaining({ aId: 1, bId: 2, total: 1 })]);
+  });
+  expect(f.upstreamCalls()).toBe(1);
+});
+
+it('does not start a search or spend its budget after disconnecting during indexer discovery', async () => {
+  const api = await fixture();
+  const controller = new AbortController();
+  let releaseIndexers!: (indexers: Awaited<ReturnType<ProwlarrService['getIndexers']>>) => void;
+  const indexers = new Promise<Awaited<ReturnType<ProwlarrService['getIndexers']>>>((resolve) => {
+    releaseIndexers = resolve;
+  });
+  let requested!: () => void;
+  const metadataRequested = new Promise<void>((resolve) => {
+    requested = resolve;
+  });
+  vi.spyOn(ProwlarrService.prototype, 'getIndexers').mockImplementation(() => {
+    requested();
+    return indexers;
+  });
+  const search = vi.spyOn(SearchService.prototype, 'search');
+  const budget = vi.spyOn(ApiKeys.prototype, 'consumeRequestBudget');
+  const disconnected = new Promise<void>((resolve) => {
+    api.app.once('request', (_req, res) => res.once('close', resolve));
+  });
+  const request = api
+    .request('/api/v1/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'Show', indexerIds: [1] }),
+      signal: controller.signal,
+    })
+    .catch(() => undefined);
+  await metadataRequested;
+  controller.abort();
+  await disconnected;
+  releaseIndexers([{ id: 1, name: 'Fixture', available: true, origin: null, categories: [] }]);
+  await request;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(search).not.toHaveBeenCalled();
+  expect(budget.mock.calls.some(([, kind]) => kind === 'live-search')).toBe(false);
+  expect(api.upstreamCalls()).toBe(0);
 });
 
 it('does not start upstream work when the caller disconnects during the cache lookup', async () => {

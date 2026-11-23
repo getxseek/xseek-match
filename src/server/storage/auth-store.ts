@@ -35,8 +35,8 @@ export interface IAuthStore {
   ): void;
   deleteSession(tokenHash: string): void;
   updateSessionSeen(tokenHash: string, now: number): void;
-  attempts(clientKey: string): { clientCount: number; globalCount: number };
-  recordAttempt(clientKey: string, until: number): void;
+  attempts(clientKey: string, globalKey?: string): { clientCount: number; globalCount: number };
+  recordAttempt(clientKey: string, until: number, globalKey?: string): void;
   clearClientAttempts(clientKey: string): void;
   purgeExpiredAttempts(now: number): void;
   resetOnboarding(): void;
@@ -170,17 +170,17 @@ export class AuthStore implements IAuthStore {
     this.db.prepare('DELETE FROM auth_attempts WHERE until < ?').run(now);
   }
 
-  attempts(clientKey: string): { clientCount: number; globalCount: number } {
+  attempts(clientKey: string, globalKey = 'global'): { clientCount: number; globalCount: number } {
     const entries = this.db
       .prepare('SELECT key, count FROM auth_attempts WHERE key IN (?, ?)')
-      .all(clientKey, 'global') as Array<{ key: string; count: number }>;
+      .all(clientKey, globalKey) as Array<{ key: string; count: number }>;
 
     let clientCount = 0;
     let globalCount = 0;
 
     for (const entry of entries) {
       if (entry.key === clientKey) clientCount = entry.count;
-      if (entry.key === 'global') globalCount = entry.count;
+      if (entry.key === globalKey) globalCount = entry.count;
     }
 
     return { clientCount, globalCount };
@@ -190,8 +190,8 @@ export class AuthStore implements IAuthStore {
     this.db.prepare("DELETE FROM auth_attempts WHERE key = ? AND key <> 'global'").run(clientKey);
   }
 
-  recordAttempt(clientKey: string, until: number): void {
-    for (const attemptKey of [clientKey, 'global']) {
+  recordAttempt(clientKey: string, until: number, globalKey = 'global'): void {
+    for (const attemptKey of [clientKey, globalKey]) {
       this.db
         .prepare(
           'INSERT INTO auth_attempts VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = count + 1',

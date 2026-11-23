@@ -66,6 +66,7 @@ export type StartedSession = { token: string; csrf: string; maxAgeSeconds?: numb
 export class Auth {
   private store: AuthStore;
   private activeAttempts = 0;
+  private activeOidcStarts = 0;
   readonly origin: string;
   readonly secure: boolean;
   readonly cookieName: string;
@@ -226,6 +227,24 @@ export class Auth {
     }
     this.activeAttempts++;
     return true;
+  }
+
+  beginOidcStart(clientKey: string): boolean {
+    if (this.activeOidcStarts >= MAX_CONCURRENT_ATTEMPTS) return false;
+    return this.store.inTransaction(() => {
+      this.store.purgeExpiredAttempts(Date.now());
+      const key = `oidc:${clientKey}`;
+      const { clientCount, globalCount } = this.store.attempts(key, 'oidc:global');
+      if (globalCount >= MAX_ATTEMPTS_GLOBAL || clientCount >= MAX_ATTEMPTS_PER_CLIENT)
+        return false;
+      this.store.recordAttempt(key, Date.now() + RATE_LIMIT_WINDOW_MS, 'oidc:global');
+      this.activeOidcStarts++;
+      return true;
+    });
+  }
+
+  finishOidcStart(): void {
+    this.activeOidcStarts--;
   }
 
   finishAttempt(): void {

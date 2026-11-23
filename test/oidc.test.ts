@@ -32,6 +32,8 @@ let providerDown: boolean;
 let discoveryChanges: Record<string, unknown>;
 let signingKeys: unknown[] | undefined;
 let requests: string[];
+let limitedEndpoint: string | undefined;
+let retryAfter: string;
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -46,11 +48,20 @@ beforeEach(async () => {
   discoveryChanges = {};
   signingKeys = undefined;
   requests = [];
+  limitedEndpoint = undefined;
+  retryAfter = '30';
   vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     if (!url.startsWith('https://id.example.test/')) return originalFetch(input, init);
     expect(new Headers(init?.headers).get('User-Agent')).toBe(XSEEK_USER_AGENT);
     requests.push(url);
+    expect(init?.redirect).toBe('error');
+    if (limitedEndpoint && url.endsWith(limitedEndpoint)) {
+      return new Response(JSON.stringify({ error: 'slow_down' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': retryAfter },
+      });
+    }
     if (providerDown) throw new Error('fixture outage with sensitive text');
     if (url.includes('.well-known/openid-configuration'))
       return json({
@@ -154,6 +165,49 @@ async function link() {
 }
 
 describe('OpenID Connect with the real maintained client and a signed mock provider', () => {
+  it.each(
+    ['seconds', 'date'].flatMap((header) =>
+      ['discovery', 'token', 'jwks', 'diagnostics'].map((endpoint) => ({ header, endpoint })),
+    ),
+  )(
+    'honors $header Retry-After from $endpoint across provider requests',
+    async ({ header, endpoint }) => {
+      const now = Math.floor(Date.now() / 1000) * 1000;
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+      retryAfter = header === 'seconds' ? '30' : new Date(now + 30_000).toUTCString();
+      if (endpoint === 'discovery') {
+        limitedEndpoint = '/.well-known/openid-configuration';
+        await expect(begin()).rejects.toThrow();
+      } else if (endpoint === 'diagnostics') {
+        limitedEndpoint = '/jwks';
+        await expect(auth.oidc.diagnose()).rejects.toThrow();
+      } else {
+        const { tx } = await begin();
+        limitedEndpoint = `/${endpoint}`;
+        await expect(auth.oidc.finish(callback(tx.state), tx.binding)).rejects.toThrow();
+      }
+      const requestCount = requests.length;
+      limitedEndpoint = undefined;
+      if (endpoint !== 'discovery') {
+        const { tx } = await begin();
+        await expect(auth.oidc.finish(callback(tx.state), tx.binding)).rejects.toThrow();
+      } else {
+        await expect(begin()).rejects.toThrow();
+      }
+      await expect(auth.oidc.diagnose()).rejects.toThrow();
+      clock.mockReturnValue(now + 29_999);
+      await expect(auth.oidc.diagnose()).rejects.toThrow();
+      expect(requests).toHaveLength(requestCount);
+      expect(
+        await auth.verifyLogin({ username: 'owner', password: 'fixture-password' }),
+      ).toBeTruthy();
+      clock.mockReturnValue(now + 30_001);
+      await expect(auth.oidc.diagnose()).resolves.toMatchObject({ ok: true });
+      await expect(link()).resolves.toHaveProperty('token');
+      expect(requests.length).toBeGreaterThan(requestCount);
+    },
+  );
+
   it.each([{ keys: [] }, { keys: [{}] }, { keys: [{ ...jwk, alg: 'HS256' }] }])(
     'rejects unusable signing keys in diagnostics: %j',
     async (value) => {
@@ -401,6 +455,96 @@ describe('OpenID Connect with the real maintained client and a signed mock provi
     ).toBeTruthy();
     providerDown = false;
     expect((await begin()).tx.url).toContain('/authorize');
+  });
+
+  it.each([false, true])(
+    'keeps local sign-in available after OIDC starts (provider down: %s)',
+    async (down) => {
+      await link();
+      if (down) {
+        auth.close();
+        auth = new Auth(config, dir);
+      }
+      providerDown = down;
+      const handler = createAuthHandler(auth, {
+        probeProwlarr: async () => ({ ok: false, error: 'not used' }),
+      });
+      const server = createServer((req, res) => {
+        void handler(req, res, new URL(req.url!, config.APP_ORIGIN).pathname);
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+      const headers = { Origin: config.APP_ORIGIN, 'Content-Type': 'application/json' };
+      try {
+        for (let index = 0; index < 10; index++) {
+          const start = await fetch(`${base}/api/auth/oidc/login`, { method: 'POST', headers });
+          expect(start.status).toBe(down ? 503 : 200);
+          if (!down) {
+            authorization = new URL((await start.json()).url);
+            const response = await fetch(
+              `${base}/api/auth/oidc/callback?code=fixture-code&state=${authorization.searchParams.get('state')}`,
+              {
+                headers: { Cookie: start.headers.get('set-cookie')!.split(';')[0]! },
+                redirect: 'manual',
+              },
+            );
+            expect(response.status).toBe(303);
+          }
+        }
+        const limited = await fetch(`${base}/api/auth/oidc/login`, { method: 'POST', headers });
+        expect(limited.status).toBe(429);
+        expect(limited.headers.get('retry-after')).toBe('900');
+        const local = await fetch(`${base}/api/auth/login`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ username: 'owner', password: 'fixture-password' }),
+        });
+        expect(local.status).toBe(200);
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
+
+  it('persists a separate OIDC budget and expires it without resetting password failures', () => {
+    for (let index = 0; index < 10; index++) {
+      auth.recordFailedAttempt('client');
+      expect(auth.beginOidcStart('client')).toBe(true);
+      auth.finishOidcStart();
+    }
+    auth.close();
+    auth = new Auth(config, dir);
+    expect(auth.beginOidcStart('client')).toBe(false);
+    expect(auth.beginAttempt('client')).toBe(false);
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 15 * 60_000 + 1);
+    expect(auth.beginOidcStart('client')).toBe(true);
+    auth.finishOidcStart();
+    expect(auth.beginAttempt('client')).toBe(true);
+    auth.finishAttempt();
+  });
+
+  it('caps OIDC starts across clients without spending the global password budget', () => {
+    for (let client = 0; client < 6; client++) {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        expect(auth.beginOidcStart(`client-${client}`)).toBe(true);
+        auth.finishOidcStart();
+      }
+    }
+    expect(auth.beginOidcStart('new-client')).toBe(false);
+    expect(auth.beginAttempt('new-client')).toBe(true);
+    auth.finishAttempt();
+  });
+
+  it('bounds concurrent OIDC starts separately from password checks', () => {
+    expect(auth.beginOidcStart('one')).toBe(true);
+    expect(auth.beginOidcStart('two')).toBe(true);
+    expect(auth.beginOidcStart('three')).toBe(false);
+    expect(auth.beginAttempt('one')).toBe(true);
+    auth.finishAttempt();
+    auth.finishOidcStart();
+    expect(auth.beginOidcStart('three')).toBe(true);
+    auth.finishOidcStart();
+    auth.finishOidcStart();
   });
 
   it('serves narrow Lax transaction cookies, Strict sessions and safe callback errors; protects linking with CSRF and origin', async () => {
