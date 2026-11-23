@@ -1,0 +1,294 @@
+# Publishes a release when a vX.Y.Z tag is pushed: checks the version, runs
+# CI on the tagged commit, builds amd64 and arm64 images on native runners,
+# tags them once everything passed, then publishes the GitHub Release last,
+# so a published release always has its images. See docs/RELEASING.md.
+#
+# Run it by hand (Actions > Release > Run workflow) to finish a release whose
+# run failed part-way; it picks up the existing tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)publish, e.g. v0.3.0
+        type: string
+        required: true
+
+# One release at a time; a second one waits, it is never cancelled
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Resolved to a digest at build time. Keep in step with the Dockerfile.
+  BASE_IMAGE: docker.io/library/node:24-bookworm-slim
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+      short_sha: ${{ steps.version.outputs.short_sha }}
+      major: ${{ steps.version.outputs.major }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      latest: ${{ steps.version.outputs.latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0 # tags and main's history
+          persist-credentials: false
+
+      - name: Check the version
+        id: version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          # Standard semver with a v prefix. No +build metadata: image tags
+          # cannot contain +.
+          [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] \
+            || fail "$TAG is not a vMAJOR.MINOR.PATCH[-PRERELEASE] tag"
+          version=${TAG#v}
+
+          pkg=$(node -p "require('./package.json').version")
+          [[ $pkg == "$version" ]] || fail "package.json says $pkg, the tag says $version"
+          grep -qF "XSEEK_VERSION = '$version'" src/version.ts || fail "src/version.ts does not say $version"
+          grep -qE "^## ${version//./\\.}( |$)" CHANGELOG.md || fail "CHANGELOG.md has no '## $version' section"
+
+          git fetch --quiet origin main
+          git merge-base --is-ancestor HEAD origin/main || fail "$TAG is not on main"
+
+          prerelease=false
+          [[ $version == *-* ]] && prerelease=true
+          # latest only moves forward: a patch for an older line keeps it
+          newest=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          latest=false
+          [[ $prerelease == false && $TAG == "$newest" ]] && latest=true
+
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "major=${version%%.*}"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "short_sha=$(git rev-parse --short=7 HEAD)"
+            echo "prerelease=$prerelease"
+            echo "latest=$latest"
+          } >> "$GITHUB_OUTPUT"
+          echo "### $TAG (prerelease: $prerelease, latest: $latest)" >> "$GITHUB_STEP_SUMMARY"
+
+  ci:
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.verify.outputs.sha }}
+
+  # Each architecture on a native runner, in parallel with CI. Pushed
+  # untagged, by digest; publish tags them once CI has passed.
+  image:
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+
+      - name: Names
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pin the base by digest, so the label says exactly what the image was
+      # built on
+      - name: Resolve the base image
+        run: |
+          digest=$(docker buildx imagetools inspect "$BASE_IMAGE" --format '{{json .Manifest}}' | jq -r .digest)
+          [[ $digest == sha256:* ]] || { echo "::error::could not resolve $BASE_IMAGE"; exit 1; }
+          echo "BASE_DIGEST=$digest" >> "$GITHUB_ENV"
+
+      - name: Labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.verify.outputs.sha }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+            org.opencontainers.image.base.name=${{ env.BASE_IMAGE }}
+            org.opencontainers.image.base.digest=${{ env.BASE_DIGEST }}
+
+      # Docker media types and no build attestations in the image index, so
+      # older Docker daemons can still pull it. Provenance is attested
+      # separately in publish.
+      - name: Build
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: BASE_IMAGE=${{ env.BASE_IMAGE }}@${{ env.BASE_DIGEST }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=false
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
+
+      - name: Save digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  # Tags the amd64 + arm64 images as one, only after CI passed
+  publish:
+    needs: [verify, ci, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: latest=false
+          # 1.2.3 always; 1.2 and 1 only for stable releases; 0.x never gets
+          # a bare major tag
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.verify.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.verify.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.verify.outputs.tag }},enable=${{ needs.verify.outputs.major != '0' }}
+            type=raw,value=latest,enable=${{ needs.verify.outputs.latest == 'true' }}
+            type=raw,value=sha-${{ needs.verify.outputs.short_sha }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag the multi-platform image
+        id: push
+        working-directory: /tmp/digests
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          args=()
+          while read -r tag; do [[ -n $tag ]] && args+=(-t "$tag"); done <<< "$TAGS"
+          sources=()
+          for d in *; do sources+=("$image@sha256:$d"); done
+          [[ ${#sources[@]} == 2 ]] || { echo "::error::expected 2 platform images, got ${#sources[@]}"; exit 1; }
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+          digest=$(docker buildx imagetools inspect "${args[1]}" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          { echo "### Published $image@$digest"; echo "- ${TAGS//$'\n'/$'\n'- }"; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Signed build provenance, verifiable with `gh attestation verify`.
+      # Stored beside the image, not in its index.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.push.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  # Last, so a published release always has its images. A release drafted by
+  # hand keeps its notes and is published; otherwise the notes come from the
+  # CHANGELOG.md section.
+  release:
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.verify.outputs.tag }}
+      VERSION: ${{ needs.verify.outputs.version }}
+      PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+      LATEST: ${{ needs.verify.outputs.latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+
+      - name: Create or publish the GitHub Release
+        run: |
+          set -euo pipefail
+          # Drafts are only found by listing, not by tag
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .id")
+          existing=${existing%%$'\n'*}
+          if [[ -n $existing ]]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$existing" \
+              -F draft=false -F prerelease="$PRERELEASE" -f make_latest="$LATEST" > /dev/null
+            echo "Published the existing release for $TAG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            awk -v v="$VERSION" '
+              /^## / { if (found) exit; if ($0 == "## " v || index($0, "## " v " ") == 1) { found = 1; next } }
+              found
+            ' CHANGELOG.md > notes.md
+            [[ -s notes.md ]] || { echo "::error::empty CHANGELOG.md section for $VERSION"; exit 1; }
+            gh release create "$TAG" --verify-tag --title "Release $VERSION" --notes-file notes.md \
+              --prerelease="$PRERELEASE" --latest="$LATEST"
+            echo "Created the release for $TAG from CHANGELOG.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
