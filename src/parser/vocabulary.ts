@@ -1,5 +1,5 @@
 /**
- * Release-name vocabulary tables and types — derived from detect-core v4 (detect-core:9bd5477).
+ * Release-name vocabulary tables and types — derived from detect-core v5 (detect-core:e81fe71).
  */
 
 /** Emitted lower-case, exactly as written here. */
@@ -62,7 +62,7 @@ export const ENCODER_ALIASES: ReadonlyArray<readonly [alias: string, encoder: En
 export type Encoder = 'AV1' | 'X264' | 'H264' | 'X265' | 'H265' | 'XVID' | 'VC1' | 'MPEG2';
 
 /** High-dynamic-range labels, most specific first. */
-export type HdrFormat = 'DV.HDR' | 'DV' | 'HDR10+' | 'HDR10' | 'HDR';
+export type HdrFormat = 'DV.HDR10+' | 'DV.HDR' | 'DV' | 'HDR10+' | 'HDR10' | 'HDR' | 'HLG';
 
 /**
  * What was done to the source. It is separate from `Source`, because a remux

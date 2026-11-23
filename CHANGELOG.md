@@ -9,7 +9,10 @@ All notable changes to xseek match will be documented in this file.
 - Stop disconnected API requests before starting a search after indexer discovery.
 - Keep local password sign-in available when provider sign-in reaches its rate limit.
 - Include API searches in completed-search counts, cache-hit rates and tracker overlap statistics.
-
+- Group a re-release with its original year (`Title 1981 2004 Director's Cut` with `Title 1981`), read `Title Season 3 2011` as a movie rather than a season pack, and read a leading `[Title] 2009` as the title rather than a group tag.
+- Keep a movie's year when a word in its title reads like a release tag (`Web`, `Dual`, `Hybrid`, `Internal`), so two copies of such a movie group together again and different years stay apart.
+- Group more copies of the same release across indexers: anime batches with no season (`[Group] Show (BD 1080p) [Batch]`), fansub groups written as a leading `[Name-Subs]` or a trailing `-Name-Subs`, encoder groups inside the spec block (`(1080p … - Encoder) [Collective]` and `(… - Encoder Collective)`), and titles that end in a Roman-numeral season (`Show.XI.S11` with `Show.S11`). `Ma10` is read as a 10-bit tag, never as a group or part of the title, and `(Season 7)` in parentheses is read as season 7.
+- Treat a plain `HDR` tag as HDR10 and `DV HDR10+` as the same file as `DV HDR` when grouping. HLG is now its own HDR value instead of reading as SDR.
 - Verify provider sessions can manage consumer keys without granting keys access to browser authentication routes.
 
 - Use filled neutral authentication buttons with readable text contrast.

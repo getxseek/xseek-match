@@ -1,5 +1,5 @@
 /**
- * Release-name parser — derived from detect-core v4 (detect-core:9bd5477) and
+ * Release-name parser — derived from detect-core v6 (detect-core:128aa23) and
  * tree-shaken to the release-key and search-input surface used by xseek-match.
  */
 import type { ParsedRelease, ReleaseFlags } from './types.js';
@@ -22,7 +22,7 @@ function toIntSafe(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeGroup(group: string): string {
+export function normalizeGroup(group: string): string {
   return group.toLowerCase().replace(/[._&]/g, '');
 }
 
@@ -57,7 +57,7 @@ const ATTACHED_INDEXER_TAG_RE = /(?<=[A-Za-z0-9])\[[^\]\s]{1,24}\]$/;
 /** Suffixes reposters and indexers add after the real -GROUP. */
 const REPOST_SUFFIX_RE = /-(?:xpost|obfuscated|postbot|scrambled|asrequested|rakuten)$/i;
 
-function prepareNameForGroupExtraction(raw: string): string {
+export function prepareNameForGroupExtraction(raw: string): string {
   let name = stripModerationSuffixes(stripSampleMarkerSuffix(stripContainerExtension(raw.trim())));
   name = name.replace(ATTACHED_INDEXER_TAG_RE, '');
   while (REPOST_SUFFIX_RE.test(name)) {
@@ -93,6 +93,7 @@ const NOT_RELEASE_GROUP = new Set([
   'MKV',
   'MP4',
   'M4V',
+  'MA10',
   'MOV',
   'OPUS',
   'SD',
@@ -128,7 +129,7 @@ function looksLikeReleaseSpecTag(token: string): boolean {
   if (/\b\d{3,4}[pi]\b/i.test(trimmed)) return true;
   if (/\b\d{3,4}x\d{3,4}\b/i.test(trimmed)) return true;
   if (
-    /\b(H\.?264|H\.?265|HEVC|X264|X265|AV1|AAC|AC3|EAC3|DDP|FLAC|OPUS|ATmos|10bit|8bit)\b/i.test(
+    /\b(H\.?264|H\.?265|HEVC|X264|X265|AV1|AAC|AC3|EAC3|DDP|FLAC|OPUS|ATmos|10bit|8bit|Ma10)\b/i.test(
       trimmed,
     )
   ) {
@@ -158,6 +159,8 @@ const BRACKET_METADATA_TAGS = new Set([
   'ITALIAN',
   'JAPANESE',
   'KOREAN',
+  // Ma10: 10-bit encode, as fansub names write it.
+  'MA10',
   'MULTI',
   'NORWEGIAN',
   'POLISH',
@@ -182,7 +185,7 @@ function isPlausibleBracketReleaseGroup(token: string): boolean {
 }
 
 /** Leading `[Group]` tag on anime releases. */
-function extractBracketReleaseGroup(raw: string): string | null {
+export function extractBracketReleaseGroup(raw: string): string | null {
   const match = raw.trim().match(/^\[([^\]]{1,48})\]\s*/);
   if (!match?.[1]) return null;
   const groupCandidate = match[1].trim();
@@ -314,7 +317,56 @@ function extractSceneReleaseGroup(raw: string): string | null {
     }
   }
 
+  // 4) encoder at the end of a spec block: `(1080p … DDP 5.1 - Wren)`, maybe followed by `[Collective]`
+  const specBlock = extractSpecBlockGroup(name);
+  if (specBlock) return specBlock.group;
+
   return null;
+}
+
+const SPEC_BLOCK_GROUP_RE =
+  /\(([^()]*?)\s-\s([A-Za-z0-9][A-Za-z0-9&_ ]{0,39}?)\s*\)\s*(?:\[([^\]]{1,40})\])?\s*$/;
+
+/**
+ * `(1080p NF WEB-DL x265 DDP 5.1 - Wren) [Lattice]` and `(… - Wren Lattice)`.
+ * The group after ` - ` may have several words and is kept whole, because real
+ * group names can contain spaces; the trailing bracket is the collective.
+ */
+function extractSpecBlockGroup(name: string): { group: string; collective: string | null } | null {
+  const match = name.match(SPEC_BLOCK_GROUP_RE);
+  if (!match?.[1] || !match[2]) return null;
+  if (!looksLikeReleaseSpecTag(match[1])) return null;
+  const group = match[2].trim();
+  if (!group.split(/\s+/).every(isPlausibleSceneReleaseGroup) || looksLikeReleaseSpecTag(group)) {
+    return null;
+  }
+  const collective = match[3]?.trim() ?? null;
+  return {
+    group,
+    collective: collective && isPlausibleCollective(collective) ? collective : null,
+  };
+}
+
+/** `[TAoE]` names a collective; `[REPACK]`, `[PROPER]` or `[ENGLISH DUB]` are release tags. */
+function isPlausibleCollective(token: string): boolean {
+  if (!isPlausibleBracketReleaseGroup(token)) return false;
+  return token
+    .split(/\s+/)
+    .every(
+      (word) =>
+        !RELEASE_TAG_TOKEN_RE.test(word) &&
+        !/^(?:repack|rerip)\d?$|^(?:dub|dubbed|sub|subbed)$/i.test(word) &&
+        !BRACKET_METADATA_TAGS.has(word.toUpperCase()),
+    );
+}
+
+/** The collective in `(… - Wren) [Lattice]`: the release circle the encoder posts for. Null in any other shape. */
+function extractReleaseCollective(raw: string): string | null {
+  const name = prepareNameForGroupExtraction(raw);
+  const specBlock = extractSpecBlockGroup(name);
+  return specBlock && extractSceneReleaseGroup(raw) === specBlock.group
+    ? specBlock.collective
+    : null;
 }
 
 function extractGroup(raw: string): string | null {
@@ -383,12 +435,16 @@ function extractHdrDv(lower: string): HdrFormat | null {
     lower.includes('dolby.vision') ||
     lower.includes('dolbyvision')
   ) {
+    // DV with HDR10+ metadata is a different file from DV with HDR10, so the + is kept.
+    if (lower.includes('hdr10+') || lower.includes('hdr10plus')) return 'DV.HDR10+';
     if (/\bhdr\b/.test(lower) || lower.includes('hdr10')) return 'DV.HDR';
     return 'DV';
   }
   if (lower.includes('hdr10+') || lower.includes('hdr10plus')) return 'HDR10+';
   if (lower.includes('hdr10')) return 'HDR10';
   if (/\bhdr\b/.test(lower)) return 'HDR';
+  // HLG is HDR too; without its own value it would read as SDR.
+  if (/\bhlg\b/.test(lower)) return 'HLG';
   return null;
 }
 
@@ -418,6 +474,7 @@ type SeasonEpisodeInference =
       packKind: 'range';
     }
   | { season: number; episode: null; episodeEnd: null; isPack: true; packKind: 'season-range' }
+  | { season: null; episode: null; episodeEnd: null; isPack: true; packKind: 'season' }
   | { season: null; episode: null; episodeEnd: null; isPack: false; packKind: null };
 
 /** Anime re-release marker glued to an episode or season number (E05v2, S01v2, - 05v2). */
@@ -425,6 +482,17 @@ const VERSION_SUFFIX = String.raw`(?:v\d)?`;
 
 /** Leading `[Group]` tag, as on anime releases. */
 const LEADING_BRACKET_TAG_RE = /^\s*\[[^\]]{1,48}\]\s*/;
+
+/** `[Batch]` / `(BD Batch)`: a whole-show or whole-season pack in anime naming. */
+const BATCH_MARKER_RE = /[[(][^\])]*\bbatch\b[^\])]*[\])]/i;
+
+/** `[Group] Show (specs) [Batch]` with no season marker: a pack whose season the name does not state. */
+function isBracketedBatch(name: string): boolean {
+  return (
+    LEADING_BRACKET_TAG_RE.test(name) &&
+    BATCH_MARKER_RE.test(name.replace(LEADING_BRACKET_TAG_RE, ''))
+  );
+}
 
 const SEASON_PART_RE =
   /(?:^|[.\s_-])s\d{1,3}(?:[.\s_-]*e\d{1,4})?[.\s_-]+part[.\s_-]*(\d{1,2})(?:$|[.\s_-])/i;
@@ -456,7 +524,7 @@ const SEASON_PACK_RE = new RegExp(
   'i',
 );
 const SPELLED_SEASON_PACK_RE =
-  /(?:^|[.\s_-])season[.\s_-]*(\d{1,2})(?!\d*[.\s_-]*e(?:pisode)?[.\s_-]*\d)(?:$|[.\s_-])/i;
+  /(?:^|[.\s_(\[-])season[.\s_-]*(\d{1,2})(?!\d*[.\s_-]*e(?:pisode)?[.\s_-]*\d)(?:$|[.\s_)\]-])/i;
 
 /** `S01 Part 2` / `S01.Part.2`: a split season, which is a different pack from Part 1. */
 function extractSeasonPart(name: string): number | null {
@@ -477,6 +545,28 @@ function matchSeasonPack(name: string, pattern: RegExp): SeasonEpisodeInference 
   const season = toIntSafe(match?.[1]);
   if (season == null) return null;
   return { season, episode: null, episodeEnd: null, isPack: true, packKind: 'season' };
+}
+
+/**
+ * `Open Season 3 2010`: "Season N" is part of a movie title only when all hold:
+ * "Season" and an unpadded number are separate words (`SEASON1` is a marker),
+ * a single year follows the number directly (`Season.2.2005-2006` is a broadcast
+ * span), no year comes before it, and the name has no other season or episode
+ * marker (`S01`, `S01E02`, `Complete`). TV packs write `Show 1974 Season 1`,
+ * `Show.2010.Season.8.1080p` or `Show-Season.02.2023`.
+ */
+function isSeasonInMovieTitle(name: string, match: RegExpMatchArray): boolean {
+  const num = match[1] ?? '';
+  if (num.startsWith('0') || match.index == null) return false;
+  const numStart = name.indexOf(num, match.index);
+  if (!/season[.\s_-]+$/i.test(name.slice(match.index, numStart))) return false;
+  if (/(?:^|[.\s_(\[-])(?:19|20)\d{2}(?:$|[.\s_)\]-])/.test(name.slice(0, match.index + 1)))
+    return false;
+  if (/(?:^|[.\s_(\[-])(?:s\d{1,3}(?:[.\s_-]*e\d{1,4})?|complete)(?:$|[.\s_)\]-])/i.test(name))
+    return false;
+  return /^[.\s_-]+(?:19|20)\d{2}(?![-–]\d{2,4})(?:$|[.\s_)\]-])/.test(
+    name.slice(numStart + num.length),
+  );
 }
 
 function inferSeasonEpisode(name: string): SeasonEpisodeInference {
@@ -562,8 +652,16 @@ function inferSeasonEpisode(name: string): SeasonEpisodeInference {
   if (seasonPack) return seasonPack;
 
   // 2b) Spelled out: Show.Season.1 / Show Season 01
-  const spelledSeasonPack = matchSeasonPack(name, SPELLED_SEASON_PACK_RE);
+  const spelledSeason = name.match(SPELLED_SEASON_PACK_RE);
+  const spelledSeasonPack =
+    spelledSeason && !isSeasonInMovieTitle(name, spelledSeason)
+      ? matchSeasonPack(name, SPELLED_SEASON_PACK_RE)
+      : null;
   if (spelledSeasonPack) return spelledSeasonPack;
+
+  if (isBracketedBatch(name)) {
+    return { season: null, episode: null, episodeEnd: null, isPack: true, packKind: 'season' };
+  }
 
   return { season: null, episode: null, episodeEnd: null, isPack: false, packKind: null };
 }
@@ -631,18 +729,34 @@ const TV_SHOW_SLUG_CUT_PATTERNS = [
   /(?:^|[.\s_-])(\d{1,2})x(\d{2,4})(?:$|[.\s_-])/i,
   /(?:^|[.\s_-])s(20\d{2}|19\d{2})(?!\d*[.\s_-]*e\d)(?:$|[.\s_-])/i,
   /(?:^|[.\s_-])s(\d{1,2})(?:v\d)?(?!\d*[.\s_-]*e\d)(?:$|[.\s_-])/i,
-  /(?:^|[.\s_-])season[.\s_-]*\d{1,2}(?:$|[.\s_-])/i,
+  /(?:^|[.\s_(\[-])season[.\s_-]*\d{1,2}(?:$|[.\s_)\]-])/i,
 ] as const;
 
 const ANIME_SLUG_CUT_PATTERN = /\s-\s\d{1,4}(?:v\d)?(?=$|[\s[(.])/i;
 
+/** A seasonless batch has no marker to cut at; the title ends at its first spec block. */
+const BATCH_SLUG_CUT_PATTERN = /\s*[[(]/;
+
+/** Tags that can sit among the title words but are never part of the title. */
+const TITLE_STOP_TOKEN_RE = /^ma10$/i;
+
 /** Text before first Sxx / SxxExx / 2x06 / Season N / anime ` - 05` token → show slug (TV packs and episodes). */
 function inferTvShowSlug(name: string): string | null {
+  const title = inferTvShowTitle(name);
+  const showSlug = title ? normalizeTitleSlug(title) : '';
+  if (!showSlug || showSlug.length < 2) return null;
+  return showSlug;
+}
+
+/** The show title as written, before it is slugged. */
+function inferTvShowTitle(name: string): string | null {
   const isBracketed = LEADING_BRACKET_TAG_RE.test(name);
   const body = name.replace(LEADING_BRACKET_TAG_RE, '');
-  const patterns = isBracketed
-    ? [...TV_SHOW_SLUG_CUT_PATTERNS, ANIME_SLUG_CUT_PATTERN]
-    : TV_SHOW_SLUG_CUT_PATTERNS;
+  const patterns = [
+    ...TV_SHOW_SLUG_CUT_PATTERNS,
+    ...(isBracketed ? [ANIME_SLUG_CUT_PATTERN] : []),
+    ...(isBracketedBatch(name) ? [BATCH_SLUG_CUT_PATTERN] : []),
+  ];
 
   let earliestMatchIndex: number | null = null;
   for (const pattern of patterns) {
@@ -660,21 +774,124 @@ function inferTvShowSlug(name: string): string | null {
   titlePrefix = titlePrefix.split(/\s+AKA\s+/i)[0]?.trim() ?? titlePrefix;
   titlePrefix = titlePrefix.replace(/\s*\(\s*(19\d{2}|20\d{2})\s*\)\s*$/i, '').trim();
   titlePrefix = titlePrefix.replace(/[.\s_-]+(19\d{2}|20\d{2})\s*$/i, '').trim();
+  titlePrefix = titlePrefix
+    .split(/([.\s_-]+)/)
+    .filter((token) => !TITLE_STOP_TOKEN_RE.test(token))
+    .join('');
 
-  const showSlug = normalizeTitleSlug(titlePrefix);
-  if (!showSlug || showSlug.length < 2) return null;
-  return showSlug;
+  return titlePrefix;
+}
+
+const ROMAN_NUMERAL_RE =
+  /^(?=[MDCLXVI])M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/;
+const ROMAN_VALUES: ReadonlyArray<readonly [string, number]> = [
+  ['M', 1000],
+  ['CM', 900],
+  ['D', 500],
+  ['CD', 400],
+  ['C', 100],
+  ['XC', 90],
+  ['L', 50],
+  ['XL', 40],
+  ['X', 10],
+  ['IX', 9],
+  ['V', 5],
+  ['IV', 4],
+  ['I', 1],
+];
+
+/** `XI` → 11. Only well-formed upper-case numerals, as release names write them. */
+function romanNumeralValue(token: string): number | null {
+  if (!ROMAN_NUMERAL_RE.test(token)) return null;
+  let rest = token;
+  let value = 0;
+  for (const [numeral, amount] of ROMAN_VALUES) {
+    while (rest.startsWith(numeral)) {
+      value += amount;
+      rest = rest.slice(numeral.length);
+    }
+  }
+  return value;
+}
+
+/** 11 → `XI`. */
+export function toRomanNumeral(value: number): string {
+  let rest = value;
+  let out = '';
+  for (const [numeral, amount] of ROMAN_VALUES) {
+    while (rest >= amount) {
+      out += numeral;
+      rest -= amount;
+    }
+  }
+  return out;
+}
+
+/**
+ * A Roman numeral ending a TV title can name the season: `Show.XI.S11`, or a
+ * seasonless `[Group] Show II [Batch]`. With a season marker it must equal the
+ * season (any value); without one, only II to X on a pack count. Episodes
+ * without a marker keep their absolute numbering, and movies never have one.
+ * The value is kept apart from `season`, because `Show II` may also be the
+ * whole title.
+ */
+function inferSeasonNumeral(
+  name: string,
+  seasonEpisode: { season: number | null; episode: number | null; isPack: boolean },
+): number | null {
+  const words = (inferTvShowTitle(name) ?? '').split(/[.\s_-]+/).filter(Boolean);
+  if (words.length < 2) return null;
+  const value = romanNumeralValue(words[words.length - 1]!);
+  if (value == null) return null;
+  if (seasonEpisode.season != null) return value === seasonEpisode.season ? value : null;
+  if (seasonEpisode.isPack && seasonEpisode.episode == null && value >= 2 && value <= 10) {
+    return value;
+  }
+  return null;
 }
 
 /** First token that is a release tag, not part of a title (resolution, source, codec, …). */
 const RELEASE_TAG_TOKEN_RE =
-  /^(?:\d{3,4}[pi]|4k|uhd|bluray|blu|bdrip|brrip|bdremux|remux|web|webdl|webrip|hdtv|hdrip|dvdrip|dvd\d?|x26[45]|h26[45]|hevc|avc|av1|xvid|proper|repack|internal|hybrid|multi|dual)$/i;
+  /^(?:\d{3,4}[pi]|4k|uhd|bluray|blu|bdrip|brrip|bdremux|remux|web|webdl|webrip|hdtv|hdrip|dvdrip|dvd\d?|x26[45]|h26[45]|hevc|avc|av1|xvid|ma10|proper|repack|internal|hybrid|multi|dual)$/i;
 
 /**
  * Parse movie title + year from scene-style names (e.g. Title.Words.1972.1080p…).
  * The release year is the last year before the release tags, so a year in the title stays in the
  * title: Blade.Runner.2049.2017 is "bladerunner2049" (2017), 1917.2019 is "1917" (2019).
+ * A re-release (`Alien 1979 2003 Director's Cut`) takes the first year instead.
  */
+const YEAR_TOKEN_RE = /^(19\d{2}|20\d{2})$/;
+
+/** `[REC] 2007 …`: a leading bracket followed directly by a year is the title, not a group tag. */
+const LEADING_BRACKET_TITLE_RE = /^\s*\[[^\]]{1,48}\]\s*(?:19|20)\d{2}(?:$|[.\s_-])/;
+
+/**
+ * Words of an edition label (Director's Cut, Restored, Re-Release, Cinema Release, …).
+ * IMAX is left out on purpose: in `Wonder Woman 1984 2020 IMAX` it is a format tag.
+ */
+const EDITION_TOKEN_RE =
+  /^(?:director['’]?s?|directors|cut|restored|restoration|remaster(?:ed)?|re|release|rerelease|extended|special|edition|assembly|cinema|theatrical|uncut|unrated|final|anniversary)$/i;
+/** Words that can open an edition label right after the second year. */
+const EDITION_LEAD_TOKEN_RE =
+  /^(?:director['’]?s?|directors|restored|restoration|remaster(?:ed)?|re|rerelease|extended|special|assembly|cinema|theatrical|uncut|unrated|final|anniversary)$/i;
+
+/**
+ * `Title 1979 2003 Director's Cut`: with two years and an edition label after or
+ * between them, the first year is the film's and the second the re-release's.
+ * Returns the index of the original year, or `yearIndex` when the rule does not apply.
+ */
+function originalYearIndex(tokens: string[], yearIndex: number): number {
+  let index = yearIndex - 1;
+  while (index > 0 && EDITION_TOKEN_RE.test(tokens[index]!) && !YEAR_TOKEN_RE.test(tokens[index]!))
+    index--;
+  if (index <= 0 || !YEAR_TOKEN_RE.test(tokens[index]!)) return yearIndex;
+  if (Number.parseInt(tokens[index]!, 10) >= Number.parseInt(tokens[yearIndex]!, 10))
+    return yearIndex;
+  const editionBetween = yearIndex - index > 1;
+  const editionAfter = EDITION_LEAD_TOKEN_RE.test(tokens[yearIndex + 1] ?? '');
+  return editionBetween || editionAfter ? index : yearIndex;
+}
+
 function inferMovieIdentity(
   name: string,
   seasonEpisode: { season: number | null; episode: number | null; isPack: boolean },
@@ -683,18 +900,26 @@ function inferMovieIdentity(
     return { releaseYear: null, titleSlug: null };
   }
 
-  const tokens = stripContainerExtension(name.trim())
-    .replace(LEADING_BRACKET_TAG_RE, '')
+  const trimmed = stripContainerExtension(name.trim());
+  const tokens = (
+    LEADING_BRACKET_TITLE_RE.test(trimmed) ? trimmed : trimmed.replace(LEADING_BRACKET_TAG_RE, '')
+  )
     .split(/[.\s_\-()[\]]+/)
-    .filter(Boolean);
-  const firstTagIndex = tokens.findIndex(
-    (token, index) => index > 0 && RELEASE_TAG_TOKEN_RE.test(token),
-  );
+    .filter((token) => token && !TITLE_STOP_TOKEN_RE.test(token));
+  // Tags only end the search after a year candidate: a title word that reads like
+  // a tag (Madame.Web.2024, Dual.2022, Internal.Affairs.1990) must not hide its year.
+  const firstYearIndex = tokens.findIndex((token) => YEAR_TOKEN_RE.test(token));
+  const firstTagIndex =
+    firstYearIndex < 0
+      ? -1
+      : tokens.findIndex(
+          (token, index) => index > firstYearIndex && RELEASE_TAG_TOKEN_RE.test(token),
+        );
   const searchEndIndex = firstTagIndex < 0 ? tokens.length : firstTagIndex;
 
   let yearTokenIndex = -1;
   for (let index = searchEndIndex - 1; index > 0; index--) {
-    if (/^(19\d{2}|20\d{2})$/.test(tokens[index] ?? '')) {
+    if (YEAR_TOKEN_RE.test(tokens[index] ?? '')) {
       yearTokenIndex = index;
       break;
     }
@@ -702,6 +927,7 @@ function inferMovieIdentity(
   if (yearTokenIndex <= 0) {
     return { releaseYear: null, titleSlug: null };
   }
+  yearTokenIndex = originalYearIndex(tokens, yearTokenIndex);
 
   const releaseYear = Number.parseInt(tokens[yearTokenIndex]!, 10);
   const titleSlug = normalizeTitleSlug(tokens.slice(0, yearTokenIndex).join(''));
@@ -745,9 +971,14 @@ export function parseReleaseName(name: string): ParsedRelease {
     isPack: seasonEpisode.isPack,
     packKind: seasonEpisode.packKind,
     part: extractSeasonPart(name),
+    seasonNumeral:
+      !datedTv && !movie.titleSlug && looksLikeTvRelease(name, seasonEpisode)
+        ? inferSeasonNumeral(name, seasonEpisode)
+        : null,
 
     group,
     normalizedGroup,
+    collective: group ? extractReleaseCollective(name) : null,
 
     source,
     treatment,
