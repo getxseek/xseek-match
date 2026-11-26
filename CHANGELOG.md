@@ -4,31 +4,38 @@ All notable changes to xseek match will be documented in this file.
 
 ## 0.3.0 - 2026-11-26
 
-### Added
-- `TRUST_PROXY`: behind a reverse proxy, sign-in attempts are limited per visitor instead of all sharing the proxy's address.
+### Auth & Security
+- Added `TRUST_PROXY` (`true` or proxy hop count) so login rate limiting uses the real client IP behind a reverse proxy instead of the proxy's IP. Only enable this if all traffic goes through your proxy.
+- Browsers you've already signed in from won't get locked out if someone else trips the login rate limit.
+- Failed logins now extend the lockout window—15 minutes from the latest failed attempt.
+- Changing a connection's host now requires re-entering its API key, so a saved key is never sent to a different host.
+- Revoking a nonexistent API key now returns an error, and revoking the same key twice only logs once.
 
-### Changed
-- Releases are cut from **Actions → Cut release**, which turns `## Unreleased` into the release's notes and bumps the version.
-- Release images are only published after the tests pass, and arm64 images are built natively.
-- Browsers you've signed in from keep working when someone else trips the sign-in limit.
-- Each failed sign-in extends the lockout, so it ends 15 minutes after the latest failure.
+### Search & qui
+- Retrying a search right after cancelling it now starts a fresh search instead of failing.
+- qui lookups now search by the most specific word in your query (`Expanse`, not `The`) so existing torrents match more reliably.
+- Concurrent qui checks no longer falsely mark clients as failed.
+- Anime batch ranges like `- 01 ~ 28` are now parsed as a batch instead of episode 1.
+- TheTVDB poster thumbnails are now only used for `thetvdb.com` URLs.
+- Tracker overlap stats on large searches are now computed incrementally so they don't block other requests.
 
-### Security
-- Changing a connection's address to another host requires its API key again, so a saved key is never sent to a new host.
+### Fixes
+- Non-JSON error responses (like during a restart) now show a plain message instead of a JSON parse error.
+- Malformed URLs now return `Bad Request` instead of a server error.
+- **Settings → Info** now shows the actual data and cache paths, including `/data` in Docker.
 
-### Fixed
-- TheTVDB poster thumbnails are only used for thetvdb.com addresses.
-- Retrying a search right after cancelling it runs a fresh search instead of failing.
-- Several qui checks at once no longer report clients as failed.
-- qui is searched with the most specific word of your query (`Expanse`, not `The`), so torrents you already have are found more often.
-- Anime batches like `- 01 ~ 28` are read as a batch, not as episode 1.
-- Errors without a readable reply, such as during a restart, show a plain message instead of a JSON parser error.
-- Tracker overlap statistics for large searches are worked out in small steps, so they no longer hold up other requests.
-- A malformed address returns "Bad request" instead of a server error.
-- **Settings → Info** shows where data and cache are actually stored, including `/data` in Docker.
-- Revoking an API key that doesn't exist is refused, and revoking one twice is recorded once.
-- The default `APP_ORIGIN` in `compose.yaml` follows `PORT`.
-- `compose.yaml` passes every setting in `.env` to the app, so `OIDC_*`, `API_V1_ENABLED` and `TRUST_PROXY` work in Docker. Needs Docker Compose 2.24 or later.
+### Docker
+- `compose.yaml` now passes all `.env` variables through to the container, so `OIDC_*`, `API_V1_ENABLED`, and `TRUST_PROXY` work as expected.
+- Default `APP_ORIGIN` now follows `PORT`.
+
+### Upgrading
+Back up your data volume first. This release adds a table for signed-in browsers and leaves existing data untouched.
+
+The updated `compose.yaml` requires Docker Compose 2.24+. No `.env` changes are needed.
+
+```bash
+docker compose pull && docker compose up -d
+```
 
 ## 0.2.0 - 2026-11-23
 
