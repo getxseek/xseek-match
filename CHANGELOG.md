@@ -2,7 +2,7 @@
 
 All notable changes to xseek match will be documented in this file.
 
-## Unreleased
+## 0.3.0 - 2026-11-26
 
 ### Added
 - `TRUST_PROXY`: behind a reverse proxy, sign-in attempts are limited per visitor instead of all sharing the proxy's address.
