@@ -35,8 +35,15 @@ async function serveStaticAsset(
   staticRoot: string,
   pathname: string,
 ): Promise<void> {
-  const relativePath = '.' + decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
-  const filePath = resolve(staticRoot, relativePath);
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
+  } catch {
+    res.statusCode = 400;
+    res.end('Bad request');
+    return;
+  }
+  const filePath = resolve(staticRoot, '.' + decodedPath);
 
   if (!filePath.startsWith(staticRoot + sep)) {
     res.statusCode = 404;

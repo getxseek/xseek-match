@@ -197,3 +197,34 @@ it('cancels an abandoned search and frees capacity for another query', async () 
     await app.close();
   }
 });
+it('starts a fresh search when a cancelled one is retried before it winds down', async () => {
+  let calls = 0;
+  const app = await fixture(async (_url, options) => {
+    calls++;
+    if (calls > 1) return Response.json([result]);
+    return new Promise((_resolve, reject) => {
+      // Upstream takes a moment to notice the abort, as a real socket teardown does.
+      options?.signal?.addEventListener(
+        'abort',
+        () => setTimeout(() => reject(new DOMException('Aborted', 'AbortError')), 100),
+        { once: true },
+      );
+    });
+  });
+  try {
+    const controller = new AbortController();
+    const abandoned = app
+      .fetch('/api/match/search?q=Slow', { signal: controller.signal })
+      .catch(() => null);
+    await vi.waitFor(() => expect(calls).toBe(1));
+    controller.abort();
+    await abandoned;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const retry = await app.fetch('/api/match/search?q=Slow');
+    expect(retry.status).toBe(200);
+    expect((await retry.json()).results).toHaveLength(1);
+    expect(calls).toBe(2);
+  } finally {
+    await app.close();
+  }
+});

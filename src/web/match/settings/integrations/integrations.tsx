@@ -5,7 +5,7 @@ import { Button } from '../../../components/ui/button';
 import { PasswordInput } from '../../../components/ui/password-input';
 import { SettingsSection } from '../../../components/ui/settings-section';
 import { SwitchButton } from '../../../components/ui/switch-button';
-import { authFetch } from '../../auth/auth-client';
+import { authFetch, responseJson } from '../../auth/auth-client';
 import './integrations.css';
 
 type Kind = 'sonarr' | 'radarr' | 'qui' | 'yata';
@@ -40,9 +40,17 @@ async function requestIntegrationsApi(body?: unknown) {
         }
       : {},
   );
-  const data = await response.json();
+  const data = await responseJson(response);
   if (!response.ok) throw new Error(data.error || 'Could not load integrations.');
   return data;
+}
+
+function urlOrigin(value: string): string | null {
+  try {
+    return new URL(value.trim()).origin;
+  } catch {
+    return null;
+  }
 }
 
 function keyPlaceholder(kind: Kind, editing: boolean): string {
@@ -79,6 +87,8 @@ function Editor({
 
   const idPrefix = useId();
   const draft = { id: connection?.id, kind, name, baseUrl, apiKey, enabled };
+  // The saved key is only reused for the address it was entered for.
+  const needsKey = !connection || urlOrigin(baseUrl) !== urlOrigin(connection.baseUrl);
 
   async function runConnectionAction(save: boolean) {
     setBusy(true);
@@ -188,10 +198,10 @@ function Editor({
               setKey(event.target.value);
               setMessage('');
             }}
-            required={!connection}
+            required={needsKey}
             disabled={busy}
             autoComplete="new-password"
-            placeholder={keyPlaceholder(kind, Boolean(connection))}
+            placeholder={keyPlaceholder(kind, !needsKey)}
             spellCheck={false}
           />
         </label>
@@ -213,7 +223,7 @@ function Editor({
             variant="ghost"
             size="sm"
             type="button"
-            disabled={busy || !name.trim() || !baseUrl.trim() || (!connection && !apiKey.trim())}
+            disabled={busy || !name.trim() || !baseUrl.trim() || (needsKey && !apiKey.trim())}
             onClick={() => void runConnectionAction(false)}
           >
             Test connection
@@ -483,9 +493,9 @@ export function IntegrationsPanel() {
         body: '{}',
         signal,
       });
-      const data = await response.json();
+      const data = await responseJson(response);
       if (signal?.aborted) return false;
-      if (!response.ok) throw new Error(data.error);
+      if (!response.ok) throw new Error(data.error || 'Connection check failed.');
 
       setProwlarrResult({
         ok: data.ok,

@@ -23,10 +23,18 @@ function validKind(kind: unknown, existing: Connection | undefined): Integration
   return kind as IntegrationKind;
 }
 
-/** A blank key on an edit keeps the stored key, so the UI never has to read it back. */
-function validApiKey(apiKey: unknown, existing: Connection | undefined): string {
+/**
+ * A blank key on an edit keeps the stored key, so the UI never has to read it back. The
+ * stored key is only kept for the same origin: it is never sent to an address it wasn't
+ * entered for.
+ */
+function validApiKey(apiKey: unknown, existing: Connection | undefined, baseUrl: string): string {
   if (apiKey !== undefined && typeof apiKey !== 'string') {
     throw new Error('Invalid API key.');
+  }
+  const keepsOrigin = existing && new URL(existing.baseUrl).origin === new URL(baseUrl).origin;
+  if (existing && !keepsOrigin && !apiKey?.trim()) {
+    throw new Error('Enter the API key again when changing the address.');
   }
   const resolved = apiKey?.trim() || existing?.apiKey || '';
   if (!resolved || resolved.length > 1024 || API_KEY_FORBIDDEN_CHARACTERS.test(resolved)) {
@@ -55,7 +63,7 @@ export function connectionFromInput(
     kind,
     name,
     baseUrl,
-    apiKey: validApiKey(input.apiKey, existing),
+    apiKey: validApiKey(input.apiKey, existing, baseUrl),
     enabled: validEnabled(input.enabled, existing),
     checkedAt: null,
     status: 'unchecked',

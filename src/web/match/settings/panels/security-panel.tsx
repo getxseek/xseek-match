@@ -3,7 +3,7 @@ import { Activity, CircleCheck, CircleMinus, Unlink } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { PasswordInput } from '../../../components/ui/password-input';
 import { SettingsSection } from '../../../components/ui/settings-section';
-import { authFetch } from '../../auth/auth-client';
+import { authFetch, responseJson } from '../../auth/auth-client';
 import './security-panel.css';
 
 type Provider = { enabled: boolean; linked: boolean; displayName: string };
@@ -28,7 +28,7 @@ async function request(path: string, body?: unknown) {
           body: JSON.stringify(body),
         },
   );
-  const data = await response.json();
+  const data = await responseJson(response);
   if (!response.ok)
     throw new SecurityRequestError(data.error || 'Security request failed.', response.status);
   return data;

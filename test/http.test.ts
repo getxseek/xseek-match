@@ -266,3 +266,24 @@ it('accepts any loopback origin only when the dev option allows it', async () =>
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it('answers a malformed percent-encoded static path with 400', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'match-http-'));
+  mkdirSync(join(dir, 'static'));
+  writeFileSync(join(dir, 'static/index.html'), '<h1>Match</h1>');
+  const server = createApp(
+    { APP_ORIGIN: 'http://localhost:5178' },
+    join(dir, 'data'),
+    join(dir, 'static'),
+  );
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  try {
+    expect((await fetch(base + '/%E0%A4%A')).status).toBe(400);
+    expect((await fetch(base + '/index.html')).status).toBe(200);
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+    await server.drain();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

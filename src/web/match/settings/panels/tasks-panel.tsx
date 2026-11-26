@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../../components/ui/button';
 import { SettingsHelp } from '../../../components/ui/settings-help';
 import { SettingsSection } from '../../../components/ui/settings-section';
-import { authFetch } from '../../auth/auth-client';
+import { authFetch, responseJson } from '../../auth/auth-client';
 import { TrackerDefinitionsTask } from '../indexers/tracker-definitions';
 
 export function TasksPanel({ onSync }: { onSync: () => void }) {
@@ -15,7 +15,7 @@ export function TasksPanel({ onSync }: { onSync: () => void }) {
     setError('');
     try {
       const response = await authFetch(`/api/match/indexers${force ? '?refresh=1' : ''}`);
-      const data = await response.json();
+      const data = await responseJson(response);
       if (!response.ok) throw new Error(data.error || 'Sync failed');
       setState(data);
       if (force) onSync();

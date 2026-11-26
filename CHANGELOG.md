@@ -4,11 +4,30 @@ All notable changes to xseek match will be documented in this file.
 
 ## Unreleased
 
+### Added
+- `TRUST_PROXY`: behind a reverse proxy, sign-in attempts are limited per visitor instead of all sharing the proxy's address.
+
 ### Changed
 - Release images are only published after the tests pass, and arm64 images are built natively.
+- Browsers you've signed in from keep working when someone else trips the sign-in limit.
+- Each failed sign-in extends the lockout, so it ends 15 minutes after the latest failure.
+
+### Security
+- Changing a connection's address to another host requires its API key again, so a saved key is never sent to a new host.
 
 ### Fixed
 - TheTVDB poster thumbnails are only used for thetvdb.com addresses.
+- Retrying a search right after cancelling it runs a fresh search instead of failing.
+- Several qui checks at once no longer report clients as failed.
+- qui is searched with the most specific word of your query (`Expanse`, not `The`), so torrents you already have are found more often.
+- Anime batches like `- 01 ~ 28` are read as a batch, not as episode 1.
+- Errors without a readable reply, such as during a restart, show a plain message instead of a JSON parser error.
+- Tracker overlap statistics for large searches are worked out in small steps, so they no longer hold up other requests.
+- A malformed address returns "Bad request" instead of a server error.
+- **Settings → Info** shows where data and cache are actually stored, including `/data` in Docker.
+- Revoking an API key that doesn't exist is refused, and revoking one twice is recorded once.
+- The default `APP_ORIGIN` in `compose.yaml` follows `PORT`.
+- `compose.yaml` passes every setting in `.env` to the app, so `OIDC_*`, `API_V1_ENABLED` and `TRUST_PROXY` work in Docker. Needs Docker Compose 2.24 or later.
 
 ## 0.2.0 - 2026-11-23
 

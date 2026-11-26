@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
 import { XSEEK_VERSION } from '../../version.js';
 
 export interface GitStatus {
@@ -33,6 +34,7 @@ export interface SystemInfoParams {
   indexerCacheHours: number;
   indexerCachedAt: number | null;
   indexerCount: number | null;
+  dataDir: string;
 }
 
 export function buildSystemInfo(params: SystemInfoParams) {
@@ -57,8 +59,8 @@ export function buildSystemInfo(params: SystemInfoParams) {
     indexerCacheHours: params.indexerCacheHours,
     indexerCachedAt: params.indexerCachedAt,
     indexerCount: params.indexerCount,
-    preferences: 'SQLite · .local/match.sqlite',
-    cacheLocation: '.local/match-cache',
+    preferences: `SQLite · ${join(params.dataDir, 'match.sqlite')}`,
+    cacheLocation: join(params.dataDir, 'match-cache'),
     authentication: 'Owner login · server-side sessions',
   };
 }

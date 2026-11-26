@@ -1,6 +1,7 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import { groupResults, type Result } from '../../domain/matching/group.js';
 import { normalizeInfoHash } from '../../domain/matching/info-hash.js';
+import { parseReleaseName } from '../../parser/parse-release-name.js';
 import { openDatabase } from './migrations.js';
 
 export interface TimingSummary {
@@ -89,6 +90,29 @@ const STATISTICS_SCHEMA_SQL = `
 `;
 
 const SAMPLE_RETENTION_MS = 366 * 86_400_000;
+/** Release names parsed per event-loop turn (~10 ms), so a large search never stalls requests. */
+const PARSE_BATCH = 100;
+
+type Parsed = ReturnType<typeof parseReleaseName>;
+
+/** An overlap job being worked through: its rows' names are parsed a batch at a time. */
+type ActiveJob = {
+  sample: string;
+  rows: OverlapSampleRow[];
+  releases: Result[];
+  parsed: Map<Result, Parsed>;
+};
+
+function releasesFor(rows: OverlapSampleRow[]): Result[] {
+  return rows
+    .filter((row) => typeof row.title === 'string')
+    .map((row, index) => ({
+      ...row,
+      guid: row.guid || String(index),
+      title: row.title!,
+      size: row.size || 0,
+    }));
+}
 
 function recordPairwiseOverlap(
   statement: StatementSync,
@@ -131,6 +155,7 @@ export class StatisticsStore implements IStatisticsStore {
   private countSummary?: Record<string, number>;
   private overlapSummary?: ReturnType<StatementSync['all']>;
   private pending: ReturnType<typeof setImmediate> | undefined;
+  private active: ActiveJob | undefined;
 
   constructor(path: string) {
     this.db = openDatabase(path, STATISTICS_SCHEMA_SQL);
@@ -200,24 +225,51 @@ export class StatisticsStore implements IStatisticsStore {
     }
   }
 
+  /**
+   * Advances overlap work by one bounded step: loads the next job, parses a batch of its
+   * release names, or records the finished job. Returns false once no work is left.
+   */
   processNextJob(): boolean {
-    const job = this.statement(
-      'SELECT sample, payload FROM overlap_jobs ORDER BY rowid LIMIT 1',
-    ).get() as { sample: string; payload: string } | undefined;
-    if (!job) return false;
-
+    const sample = this.active?.sample;
     try {
-      this.overlap(JSON.parse(job.payload), job.sample);
+      if (!this.active) {
+        const job = this.statement(
+          'SELECT sample, payload FROM overlap_jobs ORDER BY rowid LIMIT 1',
+        ).get() as { sample: string; payload: string } | undefined;
+        if (!job) return false;
+        this.active = { sample: job.sample, rows: [], releases: [], parsed: new Map() };
+        const rows = JSON.parse(job.payload) as OverlapSampleRow[];
+        this.active.rows = rows;
+        this.active.releases = releasesFor(rows);
+        return true;
+      }
+
+      const job = this.active;
+      if (job.parsed.size < job.releases.length) {
+        for (const release of job.releases.slice(job.parsed.size, job.parsed.size + PARSE_BATCH))
+          job.parsed.set(release, parseReleaseName(release.title));
+        return true;
+      }
+
+      this.active = undefined;
+      this.overlap(job.rows, job.sample, { releases: job.releases, parsed: job.parsed });
       this.statement('DELETE FROM overlap_jobs WHERE sample = ?').run(job.sample);
       return true;
     } catch {
-      this.statement('DELETE FROM overlap_jobs WHERE sample = ?').run(job.sample);
+      const failed = sample ?? this.active?.sample;
+      this.active = undefined;
+      if (failed !== undefined)
+        this.statement('DELETE FROM overlap_jobs WHERE sample = ?').run(failed);
       this.count('overlapJobsFailed');
       return true;
     }
   }
 
-  overlap(rows: OverlapSampleRow[], sample?: string): void {
+  overlap(
+    rows: OverlapSampleRow[],
+    sample?: string,
+    prepared?: { releases: Result[]; parsed: ReadonlyMap<Result, Parsed> },
+  ): void {
     if (sample && this.statement('SELECT 1 FROM overlap_samples WHERE id = ?').get(sample)) return;
 
     const trackersByHash = new Map<string, Map<number, string>>();
@@ -258,16 +310,8 @@ export class StatisticsStore implements IStatisticsStore {
         recordPairwiseOverlap(insertHashOverlap, sorted);
       }
 
-      const releases: Result[] = rows
-        .filter((row) => typeof row.title === 'string')
-        .map((row, index) => ({
-          ...row,
-          guid: row.guid || String(index),
-          title: row.title!,
-          size: row.size || 0,
-        }));
-
-      for (const group of groupResults(releases)) {
+      const releases = prepared?.releases ?? releasesFor(rows);
+      for (const group of groupResults(releases, undefined, prepared?.parsed)) {
         if (group.evidence !== 'release') continue;
         const sortedTrackers = [
           ...new Map(group.rows.map((row) => [row.indexerId, row.indexer])).entries(),

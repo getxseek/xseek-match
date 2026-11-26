@@ -36,7 +36,10 @@ export interface IAuthStore {
   deleteSession(tokenHash: string): void;
   updateSessionSeen(tokenHash: string, now: number): void;
   attempts(clientKey: string, globalKey?: string): { clientCount: number; globalCount: number };
-  recordAttempt(clientKey: string, until: number, globalKey?: string): void;
+  recordAttempt(clientKey: string, until: number, globalKey?: string | null): void;
+  saveDevice(tokenHash: string, now: number, expires: number): void;
+  hasDevice(tokenHash: string, now: number): boolean;
+  deleteAllDevices(): void;
   clearClientAttempts(clientKey: string): void;
   purgeExpiredAttempts(now: number): void;
   resetOnboarding(): void;
@@ -66,7 +69,14 @@ const AUTH_SCHEMA_SQL = `
     count INTEGER NOT NULL,
     until INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS trusted_devices (
+    id TEXT PRIMARY KEY,
+    created INTEGER NOT NULL,
+    expires INTEGER NOT NULL
+  );
 `;
+
+const MAX_TRUSTED_DEVICES = 20;
 
 const ACTIVE_SESSIONS_SQL = `
   SELECT id, created, expires, seen
@@ -190,19 +200,47 @@ export class AuthStore implements IAuthStore {
     this.db.prepare("DELETE FROM auth_attempts WHERE key = ? AND key <> 'global'").run(clientKey);
   }
 
-  recordAttempt(clientKey: string, until: number, globalKey = 'global'): void {
-    for (const attemptKey of [clientKey, globalKey]) {
+  /** Each failure extends the window, so it ends `until` after the latest failure. */
+  recordAttempt(clientKey: string, until: number, globalKey: string | null = 'global'): void {
+    for (const attemptKey of globalKey === null ? [clientKey] : [clientKey, globalKey]) {
       this.db
         .prepare(
-          'INSERT INTO auth_attempts VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = count + 1',
+          'INSERT INTO auth_attempts VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = count + 1, until = excluded.until',
         )
         .run(attemptKey, until);
     }
   }
 
+  /** Keeps the newest devices; the oldest is dropped past the cap. */
+  saveDevice(tokenHash: string, now: number, expires: number): void {
+    withImmediateTransaction(this.db, () => {
+      this.db.prepare('DELETE FROM trusted_devices WHERE expires <= ?').run(now);
+      this.db.prepare('INSERT INTO trusted_devices VALUES (?, ?, ?)').run(tokenHash, now, expires);
+      this.db
+        .prepare(
+          'DELETE FROM trusted_devices WHERE id NOT IN (SELECT id FROM trusted_devices ORDER BY created DESC, rowid DESC LIMIT ?)',
+        )
+        .run(MAX_TRUSTED_DEVICES);
+    });
+  }
+
+  hasDevice(tokenHash: string, now: number): boolean {
+    return Boolean(
+      this.db
+        .prepare('SELECT 1 FROM trusted_devices WHERE id = ? AND expires > ?')
+        .get(tokenHash, now),
+    );
+  }
+
+  deleteAllDevices(): void {
+    this.db.exec('DELETE FROM trusted_devices');
+  }
+
   resetOnboarding(): void {
     withImmediateTransaction(this.db, () => {
-      this.db.exec('DELETE FROM sessions; DELETE FROM owner; DELETE FROM auth_attempts');
+      this.db.exec(
+        'DELETE FROM sessions; DELETE FROM owner; DELETE FROM auth_attempts; DELETE FROM trusted_devices',
+      );
       this.meta('onboarding-step', 'connection');
     });
   }

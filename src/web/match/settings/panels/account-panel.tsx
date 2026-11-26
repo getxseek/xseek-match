@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Button } from '../../../components/ui/button';
 import { PasswordInput } from '../../../components/ui/password-input';
 import { SettingsSection } from '../../../components/ui/settings-section';
-import { authFetch } from '../../auth/auth-client';
+import { authFetch, responseJson } from '../../auth/auth-client';
 import { SecurityPanel } from './security-panel';
 
 export function AccountPanel() {
@@ -39,7 +39,7 @@ export function AccountPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, password }),
       });
-      const data = await response.json();
+      const data = await responseJson(response);
       if (response.status === 401) {
         setPasswordError(data.error || 'Current password is incorrect.');
         setBusy(false);

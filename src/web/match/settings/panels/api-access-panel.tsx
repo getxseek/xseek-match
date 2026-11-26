@@ -4,7 +4,7 @@ import { API_SCOPES, type ApiScope, type PublicApiKey } from '../../../../contra
 import { Button } from '../../../components/ui/button';
 import { PasswordInput } from '../../../components/ui/password-input';
 import { SettingsSection } from '../../../components/ui/settings-section';
-import { authFetch } from '../../auth/auth-client';
+import { authFetch, responseJson } from '../../auth/auth-client';
 import './api-access.css';
 
 const SCOPE_LABELS: Record<ApiScope, string> = {
@@ -40,7 +40,7 @@ export function ApiAccessPanel() {
 
   async function load() {
     const response = await authFetch('/api/auth/keys');
-    const data = await response.json();
+    const data = await responseJson(response);
     if (!response.ok) throw new Error('Could not load API keys.');
     setKeys(data.keys);
   }
@@ -67,7 +67,7 @@ export function ApiAccessPanel() {
           ...(noExpiry ? { expiresAt: null } : {}),
         }),
       });
-      const data = await response.json();
+      const data = await responseJson(response);
       if (response.status === 401) {
         setPasswordError(data.error || 'Verify your current password.');
         return;
