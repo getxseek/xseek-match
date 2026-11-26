@@ -8,6 +8,7 @@ All notable changes to xseek match will be documented in this file.
 - `TRUST_PROXY`: behind a reverse proxy, sign-in attempts are limited per visitor instead of all sharing the proxy's address.
 
 ### Changed
+- Releases are cut from **Actions → Cut release**, which turns `## Unreleased` into the release's notes and bumps the version.
 - Release images are only published after the tests pass, and arm64 images are built natively.
 - Browsers you've signed in from keep working when someone else trips the sign-in limit.
 - Each failed sign-in extends the lockout, so it ends 15 minutes after the latest failure.
