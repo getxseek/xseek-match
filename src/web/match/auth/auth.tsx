@@ -7,7 +7,7 @@ import { ErrorBoundary } from '../error-boundary';
 import App from '../main';
 import { loadPreferences, preferences } from '../settings/common/preferences';
 import { startTheme } from '../theme/bootstrap';
-import { authFetch, setCsrf } from './auth-client';
+import { authFetch, responseJson, setCsrf } from './auth-client';
 import './auth.css';
 import { warmIndexerIcons } from './warm-indexer-icons';
 import { XmCollapseMark } from './xm-collapse-mark';
@@ -50,7 +50,7 @@ async function authRequest(path: string, body?: unknown) {
           body: JSON.stringify(body),
         },
   );
-  const data = await response.json();
+  const data = await responseJson(response);
   if (!response.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
@@ -506,8 +506,8 @@ function Gate() {
   /** Discovers indexers and warms their icons so step 3 opens complete; failures are retried there. */
   async function syncIndexers(): Promise<DiscoveredTracker[]> {
     const response = await authFetch('/api/match/indexers');
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
+    const data = await responseJson(response);
+    if (!response.ok) throw new Error(data.error || 'Could not load indexers.');
     const discovered: DiscoveredTracker[] = data.trackers;
     setTrackers(discovered);
     await warmIndexerIcons(discovered.flatMap((tracker) => (tracker.icon ? [tracker.icon] : [])));

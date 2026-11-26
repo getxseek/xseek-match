@@ -1,4 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { IncomingMessage } from 'node:http';
+import { isIP } from 'node:net';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { argon2id, hash, verify } from 'argon2';
@@ -20,6 +22,8 @@ const RATE_LIMIT_WINDOW_MS = 15 * 60_000;
 const MAX_CONCURRENT_ATTEMPTS = 2;
 const MAX_ATTEMPTS_PER_CLIENT = 10;
 const MAX_ATTEMPTS_GLOBAL = 60;
+const TRUSTED_DEVICE_DAYS = 180;
+const MAX_PROXY_HOPS = 10;
 const ARGON2_OPTIONS = {
   type: argon2id,
   memoryCost: 19_456,
@@ -60,7 +64,23 @@ function parseAppOrigin(configured: string | undefined): URL {
   return url;
 }
 
+/** TRUST_PROXY: unset or `false` trusts no proxy, `true` one, or a number of proxy hops. */
+function parseTrustProxy(value: string | undefined): number {
+  if (!value || value === 'false') return 0;
+  if (value === 'true') return 1;
+  const hops = Number(value);
+  if (!Number.isInteger(hops) || hops < 0 || hops > MAX_PROXY_HOPS) {
+    throw new Error(
+      `TRUST_PROXY must be true, false or a number of proxy hops up to ${MAX_PROXY_HOPS}`,
+    );
+  }
+  return hops;
+}
+
 export type StartedSession = { token: string; csrf: string; maxAgeSeconds?: number };
+
+/** Who a sign-in attempt is counted against: a trusted device, or else the client address. */
+export type AttemptIdentity = { key: string; trustedDevice: boolean };
 
 /** The single owner account: credentials, browser sessions, sign-in throttling and onboarding. */
 export class Auth {
@@ -70,6 +90,8 @@ export class Auth {
   readonly origin: string;
   readonly secure: boolean;
   readonly cookieName: string;
+  readonly deviceCookieName: string;
+  readonly proxyHops: number;
   readonly oidc: OidcService;
 
   constructor(env: Record<string, string | undefined>, dataDir: string) {
@@ -77,6 +99,8 @@ export class Auth {
     this.origin = appOrigin.origin;
     this.secure = appOrigin.protocol === 'https:';
     this.cookieName = this.secure ? '__Host-match_session' : 'match_session';
+    this.deviceCookieName = this.secure ? '__Host-match_device' : 'match_device';
+    this.proxyHops = parseTrustProxy(env.TRUST_PROXY);
     this.store = new AuthStore(join(dataDir, 'match.sqlite'));
     try {
       this.oidc = new OidcService(env, this);
@@ -211,16 +235,61 @@ export class Auth {
   }
 
   /**
-   * Admits one credential attempt unless this client's or all clients' recent failures, or
-   * concurrent hashing, are over the limit. Every admitted attempt must be paired with
-   * finishAttempt(); only failures are counted (see recordFailedAttempt).
+   * The client's address. With TRUST_PROXY, the address each trusted proxy reported in
+   * X-Forwarded-For, counted from the right so a client cannot spoof it by adding entries.
    */
-  beginAttempt(clientKey: string): boolean {
+  clientAddress(req: IncomingMessage): string {
+    const socket = req.socket.remoteAddress || 'unknown';
+    if (!this.proxyHops) return socket;
+    const header = req.headers['x-forwarded-for'];
+    const forwarded = (Array.isArray(header) ? header.join(',') : header || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const chain = [...forwarded, socket];
+    const client = chain[Math.max(0, chain.length - 1 - this.proxyHops)]!;
+    return isIP(client) ? client : socket;
+  }
+
+  /** Sign-in attempts from a trusted device are counted per device; others per address. */
+  attemptIdentity(req: IncomingMessage, deviceToken: string | undefined): AttemptIdentity {
+    const device = this.trustedDeviceKey(deviceToken);
+    return device
+      ? { key: device, trustedDevice: true }
+      : { key: this.clientAddress(req), trustedDevice: false };
+  }
+
+  /** `device:<hash>` for a live device token, else undefined. */
+  trustedDeviceKey(token: string | undefined): string | undefined {
+    if (!token || token.length > MAX_SESSION_TOKEN_LENGTH) return undefined;
+    const hash = sha256Hex(token);
+    return this.store.hasDevice(hash, Date.now()) ? `device:${hash}` : undefined;
+  }
+
+  /**
+   * Marks the browser that just signed in as trusted. Its later attempts skip the shared
+   * per-address and global limits, so someone else's failures cannot lock the owner out.
+   */
+  issueDevice(): { token: string; maxAgeSeconds: number } {
+    const token = generateRandomToken();
+    const now = Date.now();
+    const ttlMs = TRUSTED_DEVICE_DAYS * 86_400_000;
+    this.store.saveDevice(sha256Hex(token), now, now + ttlMs);
+    return { token, maxAgeSeconds: ttlMs / 1000 };
+  }
+
+  /**
+   * Admits one credential attempt unless this client's or all clients' recent failures, or
+   * concurrent hashing, are over the limit. A trusted device is held only to its own limit.
+   * Every admitted attempt must be paired with finishAttempt(); only failures are counted
+   * (see recordFailedAttempt).
+   */
+  beginAttempt(clientKey: string, trustedDevice = false): boolean {
     this.store.purgeExpiredAttempts(Date.now());
     const { clientCount, globalCount } = this.store.attempts(clientKey);
     if (
       this.activeAttempts >= MAX_CONCURRENT_ATTEMPTS ||
-      globalCount >= MAX_ATTEMPTS_GLOBAL ||
+      (!trustedDevice && globalCount >= MAX_ATTEMPTS_GLOBAL) ||
       clientCount >= MAX_ATTEMPTS_PER_CLIENT
     ) {
       return false;
@@ -251,8 +320,13 @@ export class Auth {
     this.activeAttempts--;
   }
 
-  recordFailedAttempt(clientKey: string): void {
-    this.store.recordAttempt(clientKey, Date.now() + RATE_LIMIT_WINDOW_MS);
+  /** A trusted device's failures count only against that device, not the global budget. */
+  recordFailedAttempt(clientKey: string, trustedDevice = false): void {
+    this.store.recordAttempt(
+      clientKey,
+      Date.now() + RATE_LIMIT_WINDOW_MS,
+      trustedDevice ? null : 'global',
+    );
   }
 
   /** A successful sign-in clears this client's failures; the global count still expires normally. */
@@ -296,6 +370,7 @@ export class Auth {
       }
       this.store.setPassword(passwordHash);
       this.store.deleteAllSessions();
+      this.store.deleteAllDevices();
     });
     return true;
   }
@@ -309,6 +384,7 @@ export class Auth {
     this.store.inTransaction(() => {
       this.store.setPassword(passwordHash);
       this.store.deleteAllSessions();
+      this.store.deleteAllDevices();
       this.store.clearAttempts();
     });
   }

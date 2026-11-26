@@ -49,6 +49,15 @@ it('stores multiple named connections, hides keys and retains a blank key on edi
       store.execute({ action: 'save', id, name: 'Bad edit', apiKey: 'bad-key' }),
     ).rejects.toThrow('rejected');
     expect(store.list().find((row) => row.id === id)!.name).toBe('Main');
+    // The saved key is never sent to a different origin.
+    for (const action of ['save', 'test'])
+      await expect(
+        store.execute({ action, id, baseUrl: 'http://attacker.test:8989', apiKey: '' }),
+      ).rejects.toThrow('Enter the API key again');
+    expect(checked).not.toContain(undefined);
+    expect(checked.filter((key) => key === 'test-key')).toHaveLength(2);
+    await store.execute({ action: 'save', id, baseUrl: 'http://sonarr:8989/other' });
+    expect(checked.at(-1)).toBe('test-key');
     await store.execute({ action: 'enabled', id, enabled: false });
     expect(store.list().find((row) => row.id === id)!.enabled).toBe(false);
     await store.execute({ action: 'test', id });

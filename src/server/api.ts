@@ -104,6 +104,7 @@ export function installApi(
       count: prowlarrService.indexerCount,
     }),
     cacheReady,
+    dataDir,
   });
 
   registerPreferencesRoute(router, {

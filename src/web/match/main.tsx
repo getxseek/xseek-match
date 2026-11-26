@@ -47,7 +47,7 @@ import {
 } from '../../search-history';
 import { Button } from '../components/ui/button';
 import '../styles.css';
-import { authFetch } from './auth/auth-client';
+import { authFetch, responseJson } from './auth/auth-client';
 import { ActivityPanel } from './results/activity';
 import { useQuiPresence } from './results/qui';
 import { IndexerIcon } from './results/result-presenters';
@@ -688,7 +688,7 @@ function App() {
         `/api/match/search?q=${encodeURIComponent(term)}&exclude=${excluded.join(',')}${idParams}${refresh ? '&refresh=1' : ''}`,
         { signal: controller.signal },
       );
-      const data = await response.json();
+      const data = await responseJson(response);
       if (!response.ok) throw new Error(data.error || 'Search failed');
       if (!controller.signal.aborted) {
         setResults(decodeResults(data.results));

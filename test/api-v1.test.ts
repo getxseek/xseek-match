@@ -417,6 +417,17 @@ it('keeps existing feature tables and keys across repeated initialization', () =
   expect(keys.authenticate(`Bearer ${created.token}`)).toBeUndefined();
   db.close();
 });
+it('refuses to revoke an unknown key and records one event per revocation', () => {
+  const db = new DatabaseSync(':memory:');
+  const keys = new ApiKeys(db);
+  const created = keys.create({ name: 'test', scopes: ['search:read'] });
+  expect(() => keys.revoke('0'.repeat(24))).toThrow('Choose a key.');
+  keys.revoke(created.key.id);
+  keys.revoke(created.key.id);
+  const events = db.prepare("SELECT key_id FROM api_key_events WHERE action = 'revoked'").all();
+  expect(events).toEqual([{ key_id: created.key.id }]);
+  db.close();
+});
 
 it('sanitizes title DTOs, exposes partial availability and preserves typed lookup-to-search IDs', async () => {
   const f = await fixture();

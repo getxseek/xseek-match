@@ -140,6 +140,7 @@ All settings are environment variables, read at startup. Restart after changing 
 | `HOST` | `0.0.0.0` | Listen address; `127.0.0.1` keeps it local |
 | `DATA_DIR` | `/data` in Docker, `.local` natively | Database and caches |
 | `API_V1_ENABLED` | `true` | Set to `false` to turn off the API |
+| `TRUST_PROXY` | `false` | Behind a reverse proxy: `true`, or the number of proxies, to limit sign-in attempts per visitor |
 
 Everything else (integrations, important trackers, matching rules, cache lifetime, accent color) lives in the app under **Settings**.
 

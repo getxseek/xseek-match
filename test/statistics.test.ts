@@ -133,3 +133,23 @@ it('defers queued overlap and deduplicates jobs before and after processing', as
   expect(stats.snapshot().overlap[0]?.total).toBe(1);
   stats.close();
 });
+
+it('parses a large overlap job in batches across event-loop turns', () => {
+  const stats = new StatisticsStore(':memory:');
+  const rows = Array.from({ length: 1000 }, (_, i) => ({
+    indexerId: 1 + (i % 2),
+    indexer: i % 2 ? 'B' : 'A',
+    title: `Show.S01E${String(Math.floor(i / 2) + 1).padStart(3, '0')}.1080p.WEB-DL.x264-GRP`,
+    size: 1000000,
+    guid: String(i),
+  }));
+  stats.queueOverlap(rows, 'large');
+  let steps = 0;
+  while (stats.processNextJob()) steps++;
+  // One step loads the job, ten parse 100 names each, one records it.
+  expect(steps).toBe(12);
+  expect(stats.snapshot().overlap).toEqual([
+    { aId: 1, bId: 2, a: 'A', b: 'B', total: 500, evidence: 'release' },
+  ]);
+  stats.close();
+});

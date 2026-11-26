@@ -72,13 +72,16 @@ export class ApiKeyStore {
       this.event(row.id, 'created');
     });
   }
-  revoke(id: string, beforeWrite?: () => void): void {
-    withImmediateTransaction(this.db, () => {
+  /** Returns false when no key has this id; revoking an already revoked key changes nothing. */
+  revoke(id: string, beforeWrite?: () => void): boolean {
+    return withImmediateTransaction(this.db, () => {
       beforeWrite?.();
-      this.db
+      if (!this.db.prepare('SELECT 1 FROM api_keys WHERE id = ?').get(id)) return false;
+      const { changes } = this.db
         .prepare('UPDATE api_keys SET revoked = ? WHERE id = ? AND revoked IS NULL')
         .run(Date.now(), id);
-      this.event(id, 'revoked');
+      if (changes) this.event(id, 'revoked');
+      return true;
     });
   }
   revokeAll(beforeWrite?: () => void): void {

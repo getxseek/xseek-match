@@ -177,7 +177,8 @@ export class SearchService {
         controller,
         includedIds,
       ).finally(() => {
-        this.flights.delete(key);
+        // An abandoned flight is removed as soon as its last waiter leaves; keep its successor.
+        if (this.flights.get(key) === current) this.flights.delete(key);
         options.activeSearches.delete(controller);
       });
       this.flights.set(key, current);
@@ -193,7 +194,11 @@ export class SearchService {
         finished = true;
         signal?.removeEventListener('abort', abort);
         current.waiters--;
-        if (!current.waiters) current.controller.abort();
+        if (!current.waiters) {
+          current.controller.abort();
+          // A retry must start a fresh search, not join this one while it winds down.
+          if (this.flights.get(key) === current) this.flights.delete(key);
+        }
         return true;
       };
       const abort = () => {

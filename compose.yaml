@@ -8,10 +8,17 @@ services:
       # Reachable from other devices on your network. Use "127.0.0.1:${PORT:-5178}:5178"
       # to keep it on this machine only.
       - "${PORT:-5178}:5178"
+    # Every setting in .env reaches the app (OIDC_*, TRUST_PROXY, API_V1_ENABLED, ...).
+    env_file:
+      - path: .env
+        required: false
+    # These win over .env. PORT in .env only changes the host port above.
     environment:
+      PORT: 5178
+      HOST: 0.0.0.0
+      DATA_DIR: /data
       PROWLARR_BASE_URL: ${PROWLARR_BASE_URL:-http://host.docker.internal:9696}
-      PROWLARR_API_KEY: ${PROWLARR_API_KEY:-}
-      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5178}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:${PORT:-5178}}
     volumes:
       - match-data:/data
     extra_hosts:

@@ -88,31 +88,42 @@ function oidcFailure(res: ServerResponse) {
   );
 }
 
-function clientKey(req: IncomingMessage): string {
-  return req.socket.remoteAddress || 'unknown';
+function deviceCookie(res: ServerResponse, auth: Auth, value: string, maxAge: number): void {
+  res.appendHeader(
+    'Set-Cookie',
+    `${auth.deviceCookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${auth.secure ? '; Secure' : ''}`,
+  );
+}
+
+/** Gives a browser that just signed in a device cookie, unless it already holds a live one. */
+function rememberDevice(req: IncomingMessage, res: ServerResponse, auth: Auth): void {
+  if (auth.trustedDeviceKey(sessionToken(req, auth.deviceCookieName))) return;
+  const device = auth.issueDevice();
+  deviceCookie(res, auth, device.token, device.maxAgeSeconds);
 }
 
 function admitOidcStart(auth: Auth, req: IncomingMessage, res: ServerResponse): boolean {
-  if (auth.beginOidcStart(clientKey(req))) return true;
+  if (auth.beginOidcStart(auth.clientAddress(req))) return true;
   res.setHeader('Retry-After', ATTEMPT_COOLDOWN_SECONDS);
   sendJson(res, 429, { error: 'Too many attempts. Please try again later.' });
   return false;
 }
 
-/** Runs a credential check only if the sign-in throttle admits it. */
+/** Runs a credential check only if the sign-in throttle admits it; `fail` records a failure. */
 async function throttled(
   auth: Auth,
   req: IncomingMessage,
   res: ServerResponse,
-  run: () => Promise<void>,
+  run: (fail: () => void) => Promise<void>,
 ): Promise<void> {
-  if (!auth.beginAttempt(clientKey(req))) {
+  const identity = auth.attemptIdentity(req, sessionToken(req, auth.deviceCookieName));
+  if (!auth.beginAttempt(identity.key, identity.trustedDevice)) {
     res.setHeader('Retry-After', ATTEMPT_COOLDOWN_SECONDS);
     sendJson(res, 429, { error: 'Too many attempts. Please try again later.' });
     return;
   }
   try {
-    await run();
+    await run(() => auth.recordFailedAttempt(identity.key, identity.trustedDevice));
   } finally {
     auth.finishAttempt();
   }
@@ -134,8 +145,11 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
       sendJson(res, 401, { error: 'Credentials changed. Sign in again.' });
       return;
     }
-    auth.clearFailedAttempts(clientKey(req));
+    auth.clearFailedAttempts(auth.clientAddress(req));
+    const device = auth.trustedDeviceKey(sessionToken(req, auth.deviceCookieName));
+    if (device) auth.clearFailedAttempts(device);
     setSessionCookie(res, auth, started.token, started.maxAgeSeconds);
+    rememberDevice(req, res, auth);
     sendJson(res, 200, auth.status({ csrf: started.csrf }));
   };
 
@@ -151,11 +165,11 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
     });
 
   const login = (req: IncomingMessage, res: ServerResponse) =>
-    throttled(auth, req, res, async () => {
+    throttled(auth, req, res, async (fail) => {
       const input = await readBody(req);
       const verifiedPassword = await auth.verifyLogin(input);
       if (!verifiedPassword) {
-        auth.recordFailedAttempt(clientKey(req));
+        fail();
         sendJson(res, 401, { error: 'Incorrect username or password.' });
         return;
       }
@@ -200,14 +214,14 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
       sendJson(res, 200, { ok: true });
     },
     'POST /api/auth/oidc/link': (req, res, session) =>
-      throttled(auth, req, res, async () => {
+      throttled(auth, req, res, async (fail) => {
         const input = await readBody(req);
         const verified = await auth.verifyLogin({
           username: auth.owner()?.username,
           password: input.password,
         });
         if (!verified) {
-          auth.recordFailedAttempt(clientKey(req));
+          fail();
           sendJson(res, 401, { error: 'Current password is incorrect.' });
           return;
         }
@@ -226,14 +240,14 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
         }
       }),
     'POST /api/auth/oidc/unlink': (req, res, session) =>
-      throttled(auth, req, res, async () => {
+      throttled(auth, req, res, async (fail) => {
         const input = await readBody(req);
         const verified = await auth.verifyLogin({
           username: auth.owner()?.username,
           password: input.password,
         });
         if (!verified) {
-          auth.recordFailedAttempt(clientKey(req));
+          fail();
           sendJson(res, 401, { error: 'Current password is incorrect.' });
           return;
         }
@@ -255,14 +269,14 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
     },
     'GET /api/auth/keys': (_req, res) => sendJson(res, 200, { keys: keys.list() }),
     'POST /api/auth/keys': (req, res) =>
-      throttled(auth, req, res, async () => {
+      throttled(auth, req, res, async (fail) => {
         const input = await readBody(req);
         const verified = await auth.verifyLogin({
           username: auth.owner()?.username,
           password: input.password,
         });
         if (!verified || verified !== auth.owner()?.password || !currentSession(req)) {
-          auth.recordFailedAttempt(clientKey(req));
+          fail();
           sendJson(res, 401, { error: 'Verify your current password to manage API keys.' });
           return;
         }
@@ -294,10 +308,10 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
       sendJson(res, 200, { ok: true });
     },
     'POST /api/auth/password': (req, res) =>
-      throttled(auth, req, res, async () => {
+      throttled(auth, req, res, async (fail) => {
         const input = await readBody(req);
         if (!(await auth.changePassword(input.currentPassword, input.password))) {
-          auth.recordFailedAttempt(clientKey(req));
+          fail();
           sendJson(res, 401, { error: 'Current password is incorrect.' });
           return;
         }
@@ -353,6 +367,7 @@ export function createAuthHandler(auth: Auth, options: AuthRouteOptions): AuthHa
         callback.search = url.search;
         const started = await auth.oidc.finish(callback, binding);
         setSessionCookie(res, auth, started.token, started.maxAgeSeconds);
+        rememberDevice(req, res, auth);
         res.writeHead(303, { Location: '/' });
         res.end();
       } catch {

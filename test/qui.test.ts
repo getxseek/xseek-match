@@ -2,6 +2,7 @@ import { preferredQuiMatches, hasQuiMatch } from '../src/qui-result';
 import { it, expect } from 'vitest';
 import {
   QuiFeatures,
+  quiSearchTerm,
   presenceRows,
   validateHashes,
   matchQuiReleases,
@@ -244,4 +245,44 @@ it('requires tracker evidence for the flat-view qui filter', () => {
   expect(hasQuiMatch([{ evidence: 'release' }])).toBe(true);
   expect(hasQuiMatch([{ evidence: 'release' }, { evidence: 'entry' }], true)).toBe(true);
   expect(hasQuiMatch(undefined, true)).toBe(false);
+});
+
+it('admits concurrent presence checks across four connections without refusing client lists', async () => {
+  const connections = Array.from({ length: 4 }, (_, i) => ({
+    ...connection,
+    id: `qui-${i}`,
+    name: `qui ${i}`,
+  }));
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const qui = new QuiFeatures(async (_, path) => {
+    if (path === '/api/instances') {
+      await gate;
+      return [{ id: 1, name: 'Client' }];
+    }
+    return { total: 1, torrents: [{ hash, state: 'uploading', progress: 1 }] };
+  });
+  const pending = Promise.all([
+    qui.presence(connections, [hash]),
+    qui.presence(connections, [hash.replace(/^./, 'b')]),
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  release();
+  const [first, second] = await pending;
+  expect(first.failed).toBe(0);
+  expect(second.failed).toBe(0);
+  expect(first.matches).toHaveLength(4);
+  await qui.close();
+});
+
+it('searches qui with the most specific word of the title', () => {
+  const release = { key: 'k', title: 'The.Expanse.S01.1080p.BluRay.x264-GRP', size: 1 };
+  expect(quiSearchTerm('The Expanse S01', [release])).toBe('Expanse');
+  expect(quiSearchTerm('House of the Dragon S02E01', [release])).toBe('Dragon');
+  expect(quiSearchTerm('Dune Part Two 2024', [release])).toBe('Dune');
+  expect(quiSearchTerm('1917', [release])).toBe('1917');
+  expect(quiSearchTerm('The', [release])).toBe('The');
+  expect(quiSearchTerm('S01', [release])).toBe('S01');
+  expect(quiSearchTerm('', [release])).toBe('The');
+  expect(quiSearchTerm('', [])).toBeUndefined();
 });

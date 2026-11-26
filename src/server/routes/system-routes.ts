@@ -24,6 +24,7 @@ export interface SystemRoutesOptions {
   searchCache: SearchCacheState;
   getIndexerStats: () => { cachedAt: number | null; count: number | null };
   cacheReady: Promise<void>;
+  dataDir: string;
 }
 
 export function registerSystemRoutes(router: Router, options: SystemRoutesOptions): void {
@@ -128,6 +129,7 @@ export function registerSystemRoutes(router: Router, options: SystemRoutesOption
         indexerCacheHours: 24,
         indexerCachedAt: indexerStats.cachedAt,
         indexerCount: indexerStats.count,
+        dataDir: options.dataDir,
       }),
     );
   });

@@ -14,6 +14,24 @@ function grouped(left: string, right: string): boolean {
   return groupResults([row(1, left), row(2, right)]).length === 1;
 }
 
+describe('anime batch spans are packs, not their first episode', () => {
+  const span = '[Hoshi-Subs] Tidepool Academy - 01 ~ 28 [1080p]';
+  it('keeps a span apart from episode 1, even without sizes', () => {
+    expect(
+      groupResults([
+        { ...row(1, span), size: 0 },
+        { ...row(2, '[Hoshi-Subs] Tidepool Academy - 01 [1080p]'), size: 0 },
+      ]),
+    ).toHaveLength(2);
+  });
+  it('groups the same span written with ~ or -', () => {
+    expect(grouped(span, '[Hoshi-Subs] Tidepool Academy - 01-28 [1080p]')).toBe(true);
+  });
+  it('keeps different spans apart', () => {
+    expect(grouped(span, '[Hoshi-Subs] Tidepool Academy - 01 ~ 12 [1080p]')).toBe(false);
+  });
+});
+
 describe('absolute episodes compare as numbers', () => {
   it('groups - 5 with - 05', () => {
     expect(

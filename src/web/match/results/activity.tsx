@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { SettingsHelp } from '../../components/ui/settings-help';
 import { SettingsSection } from '../../components/ui/settings-section';
-import { authFetch } from '../auth/auth-client';
+import { authFetch, responseJson } from '../auth/auth-client';
 type Cache = {
   entries: number;
   bytes: number;
@@ -30,7 +30,7 @@ export function ActivityPanel({ kind }: { kind: 'cache' | 'logs' }) {
       const response = await authFetch(`/api/match/${kind}${save ? `?ttl=${ttl}` : ''}`, {
         method: save ? 'POST' : 'GET',
       });
-      const data = await response.json();
+      const data = await responseJson(response);
       if (!response.ok) throw new Error(data.error || 'Could not load data');
       if (kind === 'cache') {
         setCache(data);

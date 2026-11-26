@@ -74,8 +74,8 @@ export class ApiKeys {
     return { key: publicKey(row), token: `xm_live_${id}.${secret}` };
   }
   revoke(id: unknown, beforeWrite?: () => void): void {
-    if (typeof id !== 'string' || !KEY_ID_PATTERN.test(id)) throw new Error('Choose a key.');
-    this.store.revoke(id, beforeWrite);
+    if (typeof id !== 'string' || !KEY_ID_PATTERN.test(id) || !this.store.revoke(id, beforeWrite))
+      throw new Error('Choose a key.');
   }
   revokeAll(beforeWrite?: () => void): void {
     this.store.revokeAll(beforeWrite);

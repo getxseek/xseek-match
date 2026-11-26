@@ -473,6 +473,7 @@ type SeasonEpisodeInference =
       isPack: true;
       packKind: 'range';
     }
+  | { season: null; episode: number; episodeEnd: number; isPack: true; packKind: 'range' }
   | { season: number; episode: null; episodeEnd: null; isPack: true; packKind: 'season-range' }
   | { season: null; episode: null; episodeEnd: null; isPack: true; packKind: 'season' }
   | { season: null; episode: null; episodeEnd: null; isPack: false; packKind: null };
@@ -515,6 +516,11 @@ const SINGLE_EPISODE_RE = new RegExp(
 const ALT_EPISODE_RE = /(?:^|[.\s_-])(\d{1,2})x(\d{2,4})(?:$|[.\s_-])/i;
 const ANIME_EPISODE_RE = new RegExp(String.raw`\s-\s(\d{1,4})${VERSION_SUFFIX}(?=$|[\s[(.])`, 'i');
 const ANIME_SEASON_EPISODE_RE = new RegExp(String.raw`\ss(\d{1,2})${ANIME_EPISODE_RE.source}`, 'i');
+/** Anime batch span: `[Group] Show - 01 ~ 28`, `- 01-12`, `S2 - 13 ~ 24`. */
+const ANIME_EPISODE_RANGE_RE = new RegExp(
+  String.raw`(?:\ss(\d{1,2}))?\s-\s(\d{1,4})${VERSION_SUFFIX}\s*[~–-]\s*(\d{1,4})${VERSION_SUFFIX}(?=$|[\s[(.])`,
+  'i',
+);
 const SEASON_RANGE_RE = /(?:^|[.\s_-])s(\d{1,2})\s*[-–]\s*s(\d{1,2})(?:$|[.\s_-])/i;
 const EPISODE_SPAN_WITHOUT_SEASON_RE =
   /(?:^|[.\s_-])e\d{1,3}[.\s_-]*-[.\s_-]*e?\d{1,3}(?:$|[.\s_-])/i;
@@ -612,6 +618,21 @@ function inferSeasonEpisode(name: string): SeasonEpisodeInference {
   // 3b) Anime: `[Group] Show S2 - 05` and absolute `[Group] Show - 1100`. Only after a leading
   // [Group] tag, so a spaced movie title like `Movie - 2020` is not read as an episode.
   if (LEADING_BRACKET_TAG_RE.test(name)) {
+    // Checked before the single forms, which would read `- 01 ~ 28` as episode 1.
+    const animeRange = name.match(ANIME_EPISODE_RANGE_RE);
+    const rangeStart = toIntSafe(animeRange?.[2]);
+    const rangeEnd = toIntSafe(animeRange?.[3]);
+    if (rangeStart != null && rangeEnd != null && rangeEnd > rangeStart) {
+      const range = {
+        episode: rangeStart,
+        episodeEnd: rangeEnd,
+        isPack: true,
+        packKind: 'range',
+      } as const;
+      const season = toIntSafe(animeRange?.[1]);
+      return season == null ? { ...range, season: null } : { ...range, season };
+    }
+
     const animeWithSeason = matchSingleSeasonEpisode(name, ANIME_SEASON_EPISODE_RE);
     if (animeWithSeason) return animeWithSeason;
 
@@ -732,7 +753,7 @@ const TV_SHOW_SLUG_CUT_PATTERNS = [
   /(?:^|[.\s_(\[-])season[.\s_-]*\d{1,2}(?:$|[.\s_)\]-])/i,
 ] as const;
 
-const ANIME_SLUG_CUT_PATTERN = /\s-\s\d{1,4}(?:v\d)?(?=$|[\s[(.])/i;
+const ANIME_SLUG_CUT_PATTERN = /\s-\s\d{1,4}(?:v\d)?(?=$|[\s[(.~–-])/i;
 
 /** A seasonless batch has no marker to cut at; the title ends at its first spec block. */
 const BATCH_SLUG_CUT_PATTERN = /\s*[[(]/;

@@ -240,9 +240,33 @@ export function validateHashes(value: unknown): string[] {
   return value;
 }
 
+/** Common words that match far more torrents than the title does. */
+const QUI_STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'from', 'les', 'der', 'die', 'das']);
+const QUI_NUMBERING_WORD = /^(?:s\d{1,3}(?:e\d{1,4})?|e\d{1,4}|\d{3,4}p|(?:19|20)\d{2})$/i;
+const QUI_WORD = /[\p{L}\p{N}]{3,}/gu;
+
+/**
+ * The word qui is searched with: the longest word of the title that is not a common word,
+ * season/episode tag, resolution or year, so qui returns few torrents beyond the release.
+ * Falls back to the first word of the title, then of the first release name.
+ */
+export function quiSearchTerm(title: string, releases: QuiRelease[]): string | undefined {
+  const words = title.match(QUI_WORD) ?? [];
+  const specific = words.filter(
+    (word) => !QUI_STOP_WORDS.has(word.toLowerCase()) && !QUI_NUMBERING_WORD.test(word),
+  );
+  const longest = specific.reduce<string | undefined>(
+    (best, word) => (!best || word.length > best.length ? word : best),
+    undefined,
+  );
+  return longest ?? words[0] ?? releases[0]?.title.match(QUI_WORD)?.[0];
+}
+
 export class QuiFeatures {
   private cache = new ExpiringCache<string, any>(100);
   private loads = new InFlight<string, any>();
+  /** Loads counted against the busy limit; client-list loads are not. */
+  private limitedLoads = 0;
   /** Bumped by clear(); loads that started before a clear must not repopulate the cache. */
   private revision = 0;
 
@@ -257,21 +281,35 @@ export class QuiFeatures {
     return this.loads.settled();
   }
 
-  private async cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  /**
+   * `limited: false` is for the small client list, one per connection, which presence
+   * checks load from inside their own admitted load; counting it would refuse them.
+   */
+  private async cached<T>(
+    key: string,
+    ttlMs: number,
+    load: () => Promise<T>,
+    limited = true,
+  ): Promise<T> {
     const saved = this.cache.get(key);
     if (saved !== undefined) return saved;
 
     const active = this.loads.get(key);
     if (active) return active;
-    if (this.loads.size >= 8) {
+    if (limited && this.limitedLoads >= 8) {
       throw new Error('qui is busy. Try again shortly.');
     }
 
     const startRevision = this.revision;
+    if (limited) this.limitedLoads++;
     return this.loads.run(key, async () => {
-      const value = await load();
-      if (startRevision === this.revision) this.cache.set(key, value, ttlMs);
-      return value;
+      try {
+        const value = await load();
+        if (startRevision === this.revision) this.cache.set(key, value, ttlMs);
+        return value;
+      } finally {
+        if (limited) this.limitedLoads--;
+      }
     });
   }
 
@@ -282,10 +320,12 @@ export class QuiFeatures {
       connection.baseUrl,
       connection.apiKey,
     ]);
-    return this.cached(cacheKey, 30_000, async () => {
-      const data = await this.request(connection, '/api/instances');
-      return parseEnabledQuiClients(data);
-    });
+    return this.cached(
+      cacheKey,
+      30_000,
+      async () => parseEnabledQuiClients(await this.request(connection, '/api/instances')),
+      false,
+    );
   }
 
   async presence(connections: QuiConnection[], hashes: string[]) {
@@ -393,8 +433,7 @@ export class QuiFeatures {
   }
 
   async releasePresence(connections: QuiConnection[], releases: QuiRelease[], title: string) {
-    const searchTerm = (title.match(/[\p{L}\p{N}]{3,}/u) ||
-      releases[0]?.title.match(/[\p{L}\p{N}]{3,}/u))?.[0];
+    const searchTerm = quiSearchTerm(title, releases);
     const matches: QuiPresence[] = [];
 
     if (!searchTerm) {
