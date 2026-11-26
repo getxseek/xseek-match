@@ -5,6 +5,7 @@ All notable changes to xseek match will be documented in this file.
 ## Unreleased
 
 ### Changed
+- Releases are cut from **Actions → Cut release**, which turns `## Unreleased` into the release's notes and bumps the version.
 - Release images are only published after the tests pass, and arm64 images are built natively.
 
 ### Fixed

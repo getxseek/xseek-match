@@ -1,0 +1,120 @@
+# Cuts a release from main in one click: renames CHANGELOG.md's
+# `## Unreleased` to the new version, bumps package.json, package-lock.json
+# and src/version.ts (scripts/cut-release.ts), commits, tags and pushes both.
+# The tag push starts release.yml, which tests, builds and publishes it.
+# Run it from Actions > Cut release > Run workflow; see docs/RELEASING.md.
+#
+# Pushes with the RELEASE_DEPLOY_KEY deploy key: main's ruleset lets only
+# that key past, and unlike GITHUB_TOKEN a push with it starts release.yml.
+name: Cut release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "patch: fixes only. minor: new features. major: breaking changes."
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: "Explicit version (overrides bump), e.g. 0.3.0 or 0.3.0-rc.1"
+        type: string
+        default: ""
+      prerelease:
+        description: "Release candidate (-rc.N). After one, the next run without this finishes the release."
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run: show the release commit, push nothing"
+        type: boolean
+        default: false
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # main's CI runs
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - name: Preconditions
+        env:
+          HAS_KEY: ${{ secrets.RELEASE_DEPLOY_KEY != '' }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          # A dry run may start from any branch, to try out workflow changes
+          [[ $GITHUB_REF == refs/heads/main || $DRY_RUN == true ]] || fail "Release from main"
+          [[ $HAS_KEY == true || $DRY_RUN == true ]] || fail "The RELEASE_DEPLOY_KEY secret is missing, see docs/RELEASING.md"
+          # Only release what main's CI already passed
+          if [[ $DRY_RUN != true ]]; then
+            ok=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&status=success" \
+              -q '.total_count')
+            [[ $ok -gt 0 ]] || fail "CI has not passed on ${GITHUB_SHA:0:7} yet"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tags
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          persist-credentials: ${{ !inputs.dry_run }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Bump, commit and tag
+        id: cut
+        env:
+          BUMP: ${{ inputs.bump }}
+          VERSION: ${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          args=(--bump "$BUMP" --version "$VERSION")
+          [[ $PRERELEASE == true ]] && args+=(--prerelease)
+          node scripts/cut-release.ts "${args[@]}" | tee -a "$GITHUB_OUTPUT" > plan.txt
+          version=$(sed -n 's/^version=//p' plan.txt)
+          tag=$(sed -n 's/^tag=//p' plan.txt)
+          rm plan.txt
+          if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+            echo "::error::$tag already exists"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -am "release: $tag"
+          git tag -a "$tag" -m "release: $tag"
+          prefix=""
+          [[ $DRY_RUN == true ]] && prefix="Dry run: "
+          {
+            echo "### $prefix$tag"
+            echo '```'
+            git show --stat --format='%h %s' HEAD
+            echo '```'
+            awk -v v="$version" '
+              /^## / { if (found) exit; if (index($0, "## " v " ") == 1) found = 1 }
+              found
+            ' CHANGELOG.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.cut.outputs.tag }}
+        run: |
+          # Branch and tag together or not at all. Fails if main moved since
+          # the run started: run it again.
+          git push --atomic origin HEAD:refs/heads/main "refs/tags/$TAG"
+          echo "Pushed $TAG: the Release workflow publishes it." >> "$GITHUB_STEP_SUMMARY"
